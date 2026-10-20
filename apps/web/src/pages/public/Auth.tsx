@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Field, Input, Spinner } from '../../components/ui';
+import { Alert, Button, Field, Input, PasswordInput, Spinner } from '../../components/ui';
 import { Logo } from '../../components/layouts';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -60,7 +60,7 @@ export function Login() {
           <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="SE100001 / you@email.com / 98765 43210" required autoComplete="username" />
         </Field>
         <Field label="Password">
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
         </Field>
         <div className="flex justify-end">
           <Link to="/forgot-password" className="text-sm font-medium text-brand-600">Forgot password?</Link>
@@ -123,8 +123,8 @@ export function Register() {
         <Field label="Email address"><Input type="email" value={form.email} onChange={(e) => set('email')(e.target.value)} required autoComplete="email" /></Field>
         <Field label="Mobile number"><Input type="tel" value={form.mobile} onChange={(e) => set('mobile')(e.target.value)} required placeholder="10-digit mobile" autoComplete="tel" /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Password" hint="At least 8 characters"><Input type="password" value={form.password} onChange={(e) => set('password')(e.target.value)} required minLength={8} autoComplete="new-password" /></Field>
-          <Field label="Confirm password"><Input type="password" value={form.confirm} onChange={(e) => set('confirm')(e.target.value)} required autoComplete="new-password" /></Field>
+          <Field label="Password" hint="At least 8 characters"><PasswordInput value={form.password} onChange={(e) => set('password')(e.target.value)} required minLength={8} autoComplete="new-password" /></Field>
+          <Field label="Confirm password"><PasswordInput value={form.confirm} onChange={(e) => set('confirm')(e.target.value)} required autoComplete="new-password" /></Field>
         </div>
         <Field label="Select package">
           {packages.isLoading ? (
@@ -236,7 +236,7 @@ export function ResetPassword() {
           className="space-y-4"
         >
           {error && <Alert>{error}</Alert>}
-          <Field label="New password" hint="At least 8 characters"><Input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
+          <Field label="New password" hint="At least 8 characters"><PasswordInput minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
           <Button type="submit" loading={loading} className="w-full">Update password</Button>
         </form>
       )}

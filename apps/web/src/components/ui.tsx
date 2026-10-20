@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, Copy, Loader2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, Eye, EyeOff, Loader2, X } from 'lucide-react';
 import {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -64,6 +64,22 @@ const inputCls =
   'block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100';
 
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(inputCls, p.className)} />;
+export function PasswordInput(p: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input {...p} type={show ? 'text' : 'password'} className={cx(inputCls, 'pr-10', p.className)} />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-600"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+}
 export const Select = (p: SelectHTMLAttributes<HTMLSelectElement>) => <select {...p} className={cx(inputCls, p.className)} />;
 export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={cx(inputCls, p.className)} />;
 

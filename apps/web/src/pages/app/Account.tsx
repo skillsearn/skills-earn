@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, Card, Field, Input, KV, PageHeader, Pagination } from '../../components/ui';
+import { Alert, Button, Card, Field, Input, PasswordInput, KV, PageHeader, Pagination } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { usePaged } from '../../lib/hooks';
@@ -122,9 +122,9 @@ export function Profile() {
           >
             {pwMsg && <Alert tone={pwMsg.includes('success') ? 'green' : 'rose'}>{pwMsg}</Alert>}
             {changePw.error && <Alert>{(changePw.error as Error).message}</Alert>}
-            <Field label="Current password"><Input type="password" value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} required /></Field>
-            <Field label="New password"><Input type="password" minLength={8} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} required /></Field>
-            <Field label="Confirm new password"><Input type="password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} required /></Field>
+            <Field label="Current password"><PasswordInput value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} required /></Field>
+            <Field label="New password"><PasswordInput minLength={8} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} required /></Field>
+            <Field label="Confirm new password"><PasswordInput value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} required /></Field>
             <Button type="submit" loading={changePw.isPending}>Update password</Button>
           </form>
         </Card>
