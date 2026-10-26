@@ -6,7 +6,7 @@ import { Alert, Button, Field, Input, PasswordInput, Spinner } from '../../compo
 import { Logo } from '../../components/layouts';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useDebounced } from '../../lib/hooks';
+import { useDebounced, usePublicSettings } from '../../lib/hooks';
 import { formatINR } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
 import type { Package } from '../../lib/types';
@@ -76,6 +76,7 @@ export function Register() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const packages = useQuery({ queryKey: ['packages'], queryFn: () => api.get<Package[]>('/packages') });
+  const referralRequired = usePublicSettings().data?.registration.referralRequired ?? true;
   const [form, setForm] = useState({
     fullName: '', email: '', mobile: '', password: '', confirm: '', packageId: '',
     referralCode: params.get('ref') ?? '', acceptTerms: false,
@@ -102,6 +103,7 @@ export function Register() {
     e.preventDefault();
     setError('');
     if (form.password !== form.confirm) return setError('Passwords do not match');
+    if (referralRequired && !form.referralCode.trim()) return setError('Referral code is required. Ask the person who invited you for their code.');
     if (form.referralCode && referrer.data && !referrer.data.valid) return setError('Referral code is not valid');
     setLoading(true);
     try {
@@ -146,7 +148,7 @@ export function Register() {
           )}
         </Field>
         <Field
-          label="Referral code (optional)"
+          label={referralRequired ? 'Referral code' : 'Referral code (optional)'}
           hint={
             code.length >= 6 && referrer.data ? (
               referrer.data.valid ? (
@@ -157,7 +159,7 @@ export function Register() {
             ) : undefined
           }
         >
-          <Input value={form.referralCode} onChange={(e) => set('referralCode')(e.target.value.toUpperCase())} placeholder="e.g. AB12CD34" />
+          <Input value={form.referralCode} onChange={(e) => set('referralCode')(e.target.value.toUpperCase())} placeholder="e.g. AB12CD34" required={referralRequired} />
         </Field>
         <label className="flex items-start gap-2 text-sm text-slate-600">
           <input type="checkbox" className="mt-0.5" checked={form.acceptTerms} onChange={(e) => set('acceptTerms')(e.target.checked)} required />

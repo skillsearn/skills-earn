@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Card, Field, FilterBar, Input, KV, Modal, PageHeader, Pagination, Select, Spinner, Stat, StatusBadge, Table, Tabs, Textarea } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useDebounced, usePaged } from '../../lib/hooks';
-import { formatDate, formatDateTime, formatINR } from '../../lib/format';
+import { formatDate, formatDateTime, formatINR, genIncome, totalGenIncome } from '../../lib/format';
 import type { Commission, DownlineMember, LedgerEntry, Package, Purchase, TeamSummary, WalletSummary, Withdrawal } from '../../lib/types';
 import { commissionColumns, ledgerColumns } from '../app/Income';
 
@@ -139,7 +139,8 @@ export function AdminUserDetail() {
           <Stat label="Available balance" value={formatINR(w.availableBalance)} tone="brand" />
           <Stat label="On hold" value={formatINR(w.onHold)} tone="amber" />
           <Stat label="Total income" value={formatINR(w.totalIncome)} sub={`Direct ${formatINR(w.directIncome)}`} />
-          <Stat label="Generation income" value={formatINR(w.gen1Income + w.gen2Income + w.gen3Income)} sub={`G1 ${formatINR(w.gen1Income)} · G2 ${formatINR(w.gen2Income)} · G3 ${formatINR(w.gen3Income)}`} />
+          <Stat label="Generation income" value={formatINR(totalGenIncome(w))} sub={Object.keys(w.generationIncome ?? {}).map((g) => `G${g} ${formatINR(genIncome(w, Number(g)))}`).join(' · ') || 'None yet'} />
+          <Stat label="Turnover" value={formatINR(w.teamTurnover)} sub={`Team purchases · own ${formatINR(w.ownTurnover)}`} />
           <Stat label="Withdrawn (net)" value={formatINR(w.totalWithdrawn)} sub={`Charges ${formatINR(w.totalCharges)}`} />
           <Stat label="Team" value={`${team.directReferrals} direct`} sub={`${team.totalDownline} total · ${team.active} active`} />
         </div>

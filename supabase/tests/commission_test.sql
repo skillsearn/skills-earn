@@ -4,6 +4,9 @@ begin;
 
 create temp table ids(name text primary key, id uuid);
 
+-- 'upline' is a root member without a sponsor.
+update app_settings set value = value || '{"referralRequired": false}' where key = 'registration';
+
 do $$
 declare
   v_names text[] := array['upline','rahul','amit','rohit','mohan','sita','xavier'];
@@ -208,6 +211,37 @@ begin
   perform broadcast_announcement('Hello', 'World', null);
   assert (select count(*) from notifications where type = 'announcement') = 8;
   raise notice 'PASS 7: dashboard, reports, announcements';
+end $$;
+
+-- 8. Generations beyond 3: Gn = G(n-3)×8% + G(n-2)×12% + G(n-1)×15%, D only in G1–G3.
+--    Yara (under Xavier) buys Diamond. Chain: xavier (direct) · mohan G1 · rohit G2 · amit G3 · rahul G4 · upline G5
+do $$
+declare p uuid; v_id uuid := gen_random_uuid();
+begin
+  update app_settings set value = value || '{"holdDays":0,"maxGenerations":5}' where key = 'commission';
+  update app_settings set value = value || '{"referralRequired":true}' where key = 'registration';
+  update packages set max_generations = 5 where slug = 'diamond';
+
+  begin
+    perform create_profile(gen_random_uuid(), 'Nobody', 'nobody@test.local', '+919777777777', null);
+    raise exception 'should have failed';
+  exception when others then assert sqlerrm like 'REFERRAL_REQUIRED%', sqlerrm; end;
+
+  insert into auth.users(id, email) values (v_id, 'yara@test.local');
+  perform create_profile(v_id, 'Yara', 'yara@test.local', '+919666666666',
+                         (select referral_code from profiles where id = pg_temp.uid('xavier')));
+  insert into ids values ('yara', v_id);
+  p := pg_temp.buy('yara', 'diamond');
+  perform pg_temp.expect(p, 0, 'xavier', 2400.00, 'credited');  -- Gold (bought in test 3)
+  perform pg_temp.expect(p, 1, 'mohan',   360.00, 'credited');  -- Diamond
+  perform pg_temp.expect(p, 2, 'rohit',   342.00, 'skipped');   -- Gold
+  perform pg_temp.expect(p, 3, 'amit',    286.50, 'skipped');   -- Gold
+  perform pg_temp.expect(p, 4, 'rahul',   112.82, 'skipped');   -- Platinum: 28.80 + 41.04 + 42.98
+  perform pg_temp.expect(p, 5, 'upline',   78.66, 'credited');  -- Diamond:  27.36 + 34.38 + 16.92
+  assert (select calculation from commissions where purchase_id = p and level = 4)
+         = '(₹360.00 × 8%) + (₹342.00 × 12%) + (₹286.50 × 15%) = ₹112.82';
+  assert (wallet_summary(pg_temp.uid('upline'))->'generationIncome'->>'5')::numeric = 78.66;
+  raise notice 'PASS 8: generation 4+ formula, configurable depth, compulsory referral';
 end $$;
 
 rollback;

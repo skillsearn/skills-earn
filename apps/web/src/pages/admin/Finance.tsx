@@ -4,7 +4,7 @@ import { ReactNode, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Card, Field, FilterBar, Input, KV, Modal, PageHeader, Pagination, Select, Spinner, StatusBadge, Table, Tabs, Textarea } from '../../components/ui';
 import { api, qs } from '../../lib/api';
-import { useDebounced, usePaged } from '../../lib/hooks';
+import { useDebounced, useGenerations, usePaged } from '../../lib/hooks';
 import { formatDateTime, formatINR, humanize, LEDGER_TYPES, levelLabel } from '../../lib/format';
 import type { Commission, LedgerEntry, PayoutGatewayStatus, Purchase, Withdrawal } from '../../lib/types';
 import { commissionColumns, ledgerColumns } from '../app/Income';
@@ -122,6 +122,7 @@ export function AdminCommissions() {
   const [level, setLevel] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
+  const generations = useGenerations();
   const list = usePaged<Commission>('admin-commissions', '/admin/commissions', { level, status, search: useDebounced(search) });
   const release = useMutation({ mutationFn: () => api.post<{ released: number }>('/admin/commissions/release'), onSuccess: () => qc.invalidateQueries() });
   return (
@@ -142,7 +143,8 @@ export function AdminCommissions() {
           <Field label="Beneficiary"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User ID, name, mobile" /></Field>
           <Field label="Level">
             <Select value={level} onChange={(e) => setLevel(e.target.value)}>
-              <option value="">All</option><option value="0">Direct</option><option value="1">Generation 1</option><option value="2">Generation 2</option><option value="3">Generation 3</option>
+              <option value="">All</option><option value="0">Direct</option>
+              {generations.map((g) => <option key={g} value={g}>Generation {g}</option>)}
             </Select>
           </Field>
           <Field label="Status">

@@ -62,6 +62,10 @@ export interface WalletSummary {
   gen1Income: number;
   gen2Income: number;
   gen3Income: number;
+  generationIncome: Record<string, number>;
+  skippedCommission: number;
+  ownTurnover: number;
+  teamTurnover: number;
   totalWithdrawn: number;
   totalCharges: number;
 }
@@ -205,6 +209,8 @@ export interface CourseSummary {
   slug: string;
   description: string | null;
   thumbnailUrl: string | null;
+  category: string | null;
+  duration: string | null;
   minPackageLevel: number;
   lessonCount: number;
   completedCount: number;

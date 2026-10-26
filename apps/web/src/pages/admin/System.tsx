@@ -9,7 +9,7 @@ import { formatDateTime, humanize, scheduleText, WEEKDAYS } from '../../lib/form
 interface Settings {
   withdrawal: { mode: 'weekly' | 'monthly'; weeklyDay: number; monthlyDay: number; windowDays: number; minAmount: number; chargeBps: number; processingEnabled: boolean; manualPayoutConfirmation: boolean };
   upgrade: { windowDays: number; commissionable: boolean; commissionBaseBps: number };
-  commission: { holdDays: number; directRequiresActivePackage: boolean };
+  commission: { holdDays: number; directRequiresActivePackage: boolean; maxGenerations: number };
   registration: { referralRequired: boolean };
 }
 
@@ -102,6 +102,9 @@ export function AdminSettings() {
             <Field label="Pending hold period (days)" hint="0 = credit to wallet immediately after verified payment">
               <Input type="number" min={0} value={s.commission.holdDays} onChange={(e) => setS({ ...s, commission: { ...s.commission, holdDays: Number(e.target.value) } })} />
             </Field>
+            <Field label="Generations calculated (maximum depth)" hint="Generations above the direct referrer. Each beneficiary still needs a package eligible for that generation.">
+              <Input type="number" min={1} max={50} value={s.commission.maxGenerations ?? 3} onChange={(e) => setS({ ...s, commission: { ...s.commission, maxGenerations: Number(e.target.value) } })} />
+            </Field>
             <Toggle checked={s.commission.directRequiresActivePackage} onChange={(v) => setS({ ...s, commission: { ...s.commission, directRequiresActivePackage: v } })} label="Direct referrer must have an active package" />
             <SaveRow m={saveC} />
           </form>
@@ -109,6 +112,7 @@ export function AdminSettings() {
         <Card title="Registration">
           <form onSubmit={(e) => { e.preventDefault(); saveR.mutate(s.registration); }}>
             <Toggle checked={s.registration.referralRequired} onChange={(v) => setS({ ...s, registration: { referralRequired: v } })} label="Referral code is mandatory" />
+            <p className="mt-2 text-xs text-slate-500">Members without a sponsor can join with the admin referral code shown on the dashboard.</p>
             <SaveRow m={saveR} />
           </form>
         </Card>

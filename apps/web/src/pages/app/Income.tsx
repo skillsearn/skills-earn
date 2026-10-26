@@ -3,8 +3,8 @@ import { Download, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Column, FilterBar, Field, Input, PageHeader, Pagination, Select, Stat, StatusBadge, Table, Tabs } from '../../components/ui';
 import { api, qs } from '../../lib/api';
-import { usePaged } from '../../lib/hooks';
-import { formatDateTime, formatINR, LEDGER_TYPES, levelLabel } from '../../lib/format';
+import { useGenerations, usePaged } from '../../lib/hooks';
+import { formatDateTime, formatINR, genIncome, LEDGER_TYPES, levelLabel } from '../../lib/format';
 import type { Commission, LedgerEntry, WalletSummary } from '../../lib/types';
 
 export const commissionColumns = (showBeneficiary = false): Column<Commission>[] => [
@@ -40,6 +40,7 @@ export default function Income() {
   const commissions = usePaged<Commission>('commissions', '/me/commissions', { level, status });
   const ledger = usePaged<LedgerEntry>('ledger', '/me/wallet/ledger', { type, from, to });
   const w = summary.data;
+  const generations = useGenerations();
 
   return (
     <>
@@ -63,9 +64,9 @@ export default function Income() {
         <Stat label="Pending commission" value={w ? formatINR(w.pendingCommission) : '—'} tone="amber" />
         <Stat label="Platform charges paid" value={w ? formatINR(w.totalCharges) : '—'} />
         <Stat label="Direct" value={w ? formatINR(w.directIncome) : '—'} tone="sky" />
-        <Stat label="Generation 1" value={w ? formatINR(w.gen1Income) : '—'} tone="sky" />
-        <Stat label="Generation 2" value={w ? formatINR(w.gen2Income) : '—'} tone="sky" />
-        <Stat label="Generation 3" value={w ? formatINR(w.gen3Income) : '—'} tone="sky" />
+        {generations.map((g) => <Stat key={g} label={`Generation ${g}`} value={w ? formatINR(genIncome(w, g)) : '—'} tone="sky" />)}
+        <Stat label="My purchases (turnover)" value={w ? formatINR(w.ownTurnover) : '—'} />
+        <Stat label="Team turnover" value={w ? formatINR(w.teamTurnover) : '—'} sub="Purchases by your downline · not income" />
       </div>
       <Card padded={false}>
         <div className="px-4 pt-2">
@@ -78,9 +79,7 @@ export default function Income() {
                 <Select value={level} onChange={(e) => setLevel(e.target.value)}>
                   <option value="">All</option>
                   <option value="0">Direct</option>
-                  <option value="1">Generation 1</option>
-                  <option value="2">Generation 2</option>
-                  <option value="3">Generation 3</option>
+                  {generations.map((g) => <option key={g} value={g}>Generation {g}</option>)}
                 </Select>
               </Field>
               <Field label="Status">

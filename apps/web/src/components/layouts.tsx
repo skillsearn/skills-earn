@@ -131,7 +131,21 @@ export function PublicLayout() {
 
 type NavItem = [to: string, label: string, icon: ReactNode, end?: boolean];
 
-function Shell({ nav, title, badge, tabs }: { nav: NavItem[]; title: string; badge?: ReactNode; tabs?: NavItem[] }) {
+const CREDIT_URL = 'https://sabkasaathidigitalservices.com/';
+
+function Credit() {
+  return (
+    <p className="no-print mt-10 text-center text-xs text-slate-400">
+      A little digital magic by{' '}
+      <a href={CREDIT_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-600 hover:underline">
+        Sabka Saathi Digital Services
+      </a>{' '}
+      ✨
+    </p>
+  );
+}
+
+function Shell({ nav, title, badge, tabs, footer }: { nav: NavItem[]; title: string; badge?: ReactNode; tabs?: NavItem[]; footer?: ReactNode }) {
   const { me, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -209,6 +223,7 @@ function Shell({ nav, title, badge, tabs }: { nav: NavItem[]; title: string; bad
       </header>
       <main className={cx('mx-auto max-w-7xl px-4 py-5 sm:py-6 lg:px-8', tabs && 'pb-24 lg:pb-6')}>
         <Outlet />
+        {footer}
       </main>
       {tabs && (
         <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
@@ -269,7 +284,7 @@ export function AppLayout() {
     ['/app/withdrawals', 'Withdraw', <Banknote className={t} />],
     ['/app/courses', 'Courses', <GraduationCap className={t} />],
   ];
-  return <Shell nav={nav} title="Member area" badge={<NotificationBell />} tabs={tabs} />;
+  return <Shell nav={nav} title="Member area" badge={<NotificationBell />} tabs={tabs} footer={<Credit />} />;
 }
 
 export function AdminLayout() {

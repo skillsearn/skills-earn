@@ -24,3 +24,19 @@ export function useDebounced<T>(value: T, ms = 350): T {
   }, [value, ms]);
   return v;
 }
+
+export interface PublicSettings {
+  registration: { referralRequired: boolean };
+  commission: { maxGenerations: number };
+}
+
+/** Public platform settings (referral rule, generation depth). */
+export function usePublicSettings() {
+  return useQuery({ queryKey: ['public-settings'], queryFn: () => api.get<PublicSettings>('/settings/public'), staleTime: 5 * 60_000 });
+}
+
+/** [1, 2, …, maxGenerations] — the generations the platform currently calculates. */
+export function useGenerations() {
+  const n = usePublicSettings().data?.commission?.maxGenerations ?? 3;
+  return Array.from({ length: n }, (_, i) => i + 1);
+}

@@ -16,6 +16,11 @@ export const formatDateTime = (v?: string | null) =>
 
 export const levelLabel = (level: number) => (level === 0 ? 'Direct' : `Generation ${level}`);
 
+/** Credited income for one generation (any depth) from a wallet summary. */
+export const genIncome = (w: { generationIncome?: Record<string, number> }, n: number) => Number(w.generationIncome?.[n] ?? 0);
+export const totalGenIncome = (w: { generationIncome?: Record<string, number> }) =>
+  Object.values(w.generationIncome ?? {}).reduce((a, b) => a + Number(b), 0);
+
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export const ordinal = (n: number) => {

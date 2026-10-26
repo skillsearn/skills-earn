@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import { Alert, Button, Card, CopyButton, Empty, PageHeader, Spinner, Stat } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { formatDateTime, formatINR, packageColor, pct, scheduleText, whatsappShare } from '../../lib/format';
+import { formatDateTime, formatINR, genIncome, packageColor, pct, scheduleText, whatsappShare } from '../../lib/format';
+import { useGenerations } from '../../lib/hooks';
 import type { Notification, TeamSummary, WalletSummary, WithdrawalSchedule } from '../../lib/types';
 
 interface DashboardData {
@@ -45,6 +46,7 @@ export function ReferralCard({ link, code }: { link: string; code: string }) {
 export default function Dashboard() {
   const { me } = useAuth();
   const { data, isLoading, error } = useQuery({ queryKey: ['dashboard'], queryFn: () => api.get<DashboardData>('/me/dashboard') });
+  const generations = useGenerations();
 
   if (isLoading) return <Spinner />;
   if (error || !data) return <Alert>{(error as Error)?.message ?? 'Failed to load'}</Alert>;
@@ -102,9 +104,7 @@ export default function Dashboard() {
         <Stat label="This week" value={formatINR(w.weeklyIncome)} icon={<TrendingUp className="h-4 w-4" />} tone="green" />
         <Stat label="This month" value={formatINR(w.monthlyIncome)} icon={<TrendingUp className="h-4 w-4" />} tone="green" />
         <Stat label="Direct referral income" value={formatINR(w.directIncome)} icon={<Users className="h-4 w-4" />} tone="sky" />
-        <Stat label="Generation 1 income" value={formatINR(w.gen1Income)} icon={<Layers className="h-4 w-4" />} tone="sky" />
-        <Stat label="Generation 2 income" value={formatINR(w.gen2Income)} icon={<Layers className="h-4 w-4" />} tone="sky" />
-        <Stat label="Generation 3 income" value={formatINR(w.gen3Income)} icon={<Layers className="h-4 w-4" />} tone="sky" />
+        {generations.map((g) => <Stat key={g} label={`Generation ${g} income`} value={formatINR(genIncome(w, g))} icon={<Layers className="h-4 w-4" />} tone="sky" />)}
         <Stat label="Pending commission" value={formatINR(w.pendingCommission)} icon={<Clock className="h-4 w-4" />} tone="amber" />
         <Stat label="Total withdrawn (net)" value={formatINR(w.totalWithdrawn)} icon={<Wallet className="h-4 w-4" />} />
         <Stat label="Direct referrals" value={data.team.directReferrals} icon={<Users className="h-4 w-4" />} />

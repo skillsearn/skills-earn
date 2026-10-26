@@ -5,6 +5,7 @@ import { AuthUser, CurrentUser, Public, Roles } from '../common/auth';
 import { Env } from '../common/env';
 import { SupabaseService, unwrap } from '../common/supabase.service';
 import { pageRange, toCamel } from '../common/util';
+import { SettingsModule, SettingsService } from '../settings/settings.module';
 
 interface DownlineRow {
   total_count: number;
@@ -16,7 +17,14 @@ export class ReferralsService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly config: ConfigService<Env, true>,
+    private readonly settings: SettingsService,
   ) {}
+
+  /** Levels a member earns from: L1 pays direct, L(n+1) pays generation n. */
+  async earningDepth() {
+    const c = await this.settings.get('commission');
+    return (c.maxGenerations ?? 3) + 1;
+  }
 
   async validate(code: string) {
     const { data } = await this.supabase.db
@@ -74,8 +82,12 @@ export class ReferralsService {
         )
       : [];
     const byId = new Map((uplineRows as { id: string }[]).map((r) => [r.id, r]));
-    const labels = ['Direct Referrer (sponsor)', 'Generation 1', 'Generation 2', 'Generation 3'];
-    const upline = me.ancestors.map((id, i) => ({ ...toCamel<object>(byId.get(id)), position: i + 1, role: labels[i] ?? `Upline ${i + 1}` }));
+    const depth = await this.earningDepth();
+    const upline = me.ancestors.map((id, i) => ({
+      ...toCamel<object>(byId.get(id)),
+      position: i + 1,
+      role: i === 0 ? 'Direct Referrer (sponsor)' : i < depth ? `Generation ${i}` : `Upline ${i + 1}`,
+    }));
     const team = await this.supabase.rpc('team_summary', { p_user: userId });
     return { upline, team };
   }
@@ -97,10 +109,10 @@ export class ReferralsController {
     return this.referrals.summary(u);
   }
 
-  /** Members up to 4 levels deep: L1 pays direct, L2–L4 pay generation 1–3. */
+  /** Members down to the earning depth: L1 pays direct, L2… pay generation 1… */
   @Get('me/team')
-  team(@CurrentUser() u: AuthUser, @Query() q: Record<string, string>) {
-    return this.referrals.downline(u.id, q, 4);
+  async team(@CurrentUser() u: AuthUser, @Query() q: Record<string, string>) {
+    return this.referrals.downline(u.id, q, await this.referrals.earningDepth());
   }
 
   @Roles('admin')
@@ -116,5 +128,5 @@ export class ReferralsController {
   }
 }
 
-@Module({ providers: [ReferralsService], controllers: [ReferralsController] })
+@Module({ imports: [SettingsModule], providers: [ReferralsService], controllers: [ReferralsController] })
 export class ReferralsModule {}

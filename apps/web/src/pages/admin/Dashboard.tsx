@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Banknote, CreditCard, Download, GraduationCap, IndianRupee, Layers, Percent, UserCheck, Users, Wallet } from 'lucide-react';
+import { AlertTriangle, Banknote, CreditCard, Download, GraduationCap, IndianRupee, Layers, Percent, Share2, UserCheck, Users, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Button, Card, Field, Input, PageHeader, Spinner, Stat, Table, Tabs } from '../../components/ui';
+import { Alert, Button, Card, CopyButton, Field, Input, PageHeader, Spinner, Stat, Table, Tabs } from '../../components/ui';
 import { api, qs } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { formatDate, formatINR } from '../../lib/format';
 
 interface AdminDashboard {
@@ -31,6 +32,29 @@ interface AdminDashboard {
   openFraudAlerts: number;
 }
 
+/** The admin's own code is the root of the referral tree: members who have no sponsor join with it. */
+function AdminReferralCard() {
+  const { me } = useAuth();
+  if (!me?.referralCode) return null;
+  return (
+    <Card title={<span className="flex items-center gap-2"><Share2 className="h-4 w-4 text-brand-600" /> Admin referral code</span>}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm text-slate-600">A referral code is required to register. Give this code or link to members who don't have a sponsor.</p>
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded bg-brand-50 px-2 py-0.5 font-mono text-base font-semibold text-brand-700">{me.referralCode}</span>
+            <span className="truncate text-xs text-slate-500">{me.referralLink}</span>
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <CopyButton text={me.referralCode} label="Copy code" />
+          <CopyButton text={me.referralLink} label="Copy link" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function AdminDashboard() {
   const { data: d, isLoading, error } = useQuery({ queryKey: ['admin-dashboard'], queryFn: () => api.get<AdminDashboard>('/admin/dashboard'), refetchInterval: 60_000 });
   if (isLoading) return <Spinner />;
@@ -39,6 +63,7 @@ export function AdminDashboard() {
   return (
     <>
       <PageHeader title="Admin dashboard" subtitle="Live platform overview" />
+      <div className="mb-6"><AdminReferralCard /></div>
       {d.openFraudAlerts > 0 && (
         <div className="mb-6">
           <Alert tone="amber">

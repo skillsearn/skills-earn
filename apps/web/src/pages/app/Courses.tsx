@@ -29,6 +29,7 @@ export function Courses() {
                   )}
                 </div>
                 <div className="flex flex-1 flex-col p-4">
+                  {(c.category || c.duration) && <p className="mb-1 text-xs font-medium text-brand-700">{[c.category, c.duration].filter(Boolean).join(' · ')}</p>}
                   <h3 className="font-semibold text-slate-900 group-hover:text-brand-700">{c.title}</h3>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-600">{c.description}</p>
                   <div className="mt-auto pt-4">

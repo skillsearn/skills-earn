@@ -2,22 +2,18 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Badge, Card, FilterBar, Input, PageHeader, Pagination, Stat, Table, Tabs } from '../../components/ui';
 import { api } from '../../lib/api';
-import { useDebounced, usePaged } from '../../lib/hooks';
+import { useDebounced, useGenerations, usePaged } from '../../lib/hooks';
 import { formatDate } from '../../lib/format';
 import type { DownlineMember, TeamSummary } from '../../lib/types';
 import { ReferralCard } from './Dashboard';
 
-/** From the viewer's point of view: L1 purchases pay direct, L2 pays G1, L3 pays G2, L4 pays G3. */
-export const DEPTH_LABEL: Record<number, string> = {
-  1: 'Direct referrals',
-  2: 'Level 2 · earns you Gen 1',
-  3: 'Level 3 · earns you Gen 2',
-  4: 'Level 4 · earns you Gen 3',
-};
+/** From the viewer's point of view: L1 purchases pay direct, L2 pays G1, L3 pays G2, … */
+const depthLabel = (d: number) => (d === 1 ? 'Direct referrals' : `Level ${d} · earns you Gen ${d - 1}`);
 
 export default function Team() {
   const summary = useQuery({ queryKey: ['team-summary'], queryFn: () => api.get<TeamSummary>('/me/team/summary') });
-  const [depth, setDepth] = useState<'all' | '1' | '2' | '3' | '4'>('all');
+  const [depth, setDepth] = useState<string>('all');
+  const levels = [1, ...useGenerations().map((g) => g + 1)];
   const [search, setSearch] = useState('');
   const q = useDebounced(search);
   const list = usePaged<DownlineMember>('team', '/me/team', { depth: depth === 'all' ? undefined : depth, search: q });
@@ -43,17 +39,17 @@ export default function Team() {
             value={depth}
             onChange={setDepth}
             tabs={[
-              { value: 'all', label: 'All (4 levels)' },
-              ...[1, 2, 3, 4].map((d) => ({
-                value: String(d) as '1',
-                label: `${DEPTH_LABEL[d].split(' · ')[0]} (${s?.byDepth?.[d] ?? 0})`,
+              { value: 'all', label: `All (${levels.length} levels)` },
+              ...levels.map((d) => ({
+                value: String(d),
+                label: `${depthLabel(d).split(' · ')[0]} (${s?.byDepth?.[d] ?? 0})`,
               })),
             ]}
           />
         </div>
         <FilterBar>
           <Input placeholder="Search name or user ID" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-          {depth !== 'all' && <span className="text-sm text-slate-500">{DEPTH_LABEL[Number(depth)]}</span>}
+          {depth !== 'all' && <span className="text-sm text-slate-500">{depthLabel(Number(depth))}</span>}
         </FilterBar>
         <Table
           rows={list.data?.items}

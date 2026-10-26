@@ -37,10 +37,12 @@ is deducted at payout.
 | 9 | Ledger on successful payout | `withdrawal_hold_release +gross`, `successful_withdrawal −net`, `platform_charge −charge`, so the charge is its own ledger row (spec D.7) and the net effect is −gross. | |
 | 10 | Concurrent withdrawal requests | One open request per user at a time. | `request_withdrawal` |
 | 11 | Course access | Tiered and inclusive: a package of level *n* unlocks courses with `min_package_level ≤ n`. | courses service |
-| 12 | Referral code mandatory? | Optional by default (`registration.referralRequired`). No referrer means no commissions (rule 4). | |
+| 12 | Referral code mandatory? | **Mandatory** since 0005 (`registration.referralRequired`, admin-toggleable). The admin's own code (shown on the admin dashboard) is the root for members without a sponsor; the admin holds no package, so commissions to the admin are skipped. | |
 | 13 | Withdrawal window | Weekly: IST weekday `weeklyDay` (0 = Sun) for `windowDays` days. Monthly: IST day `monthlyDay` (1–28) for `windowDays` days. | `withdrawal_window_open()` |
 | 14 | Sponsor changes | Not allowed. The sponsor is fixed at registration, so `ancestors` never needs rewriting. | |
 | 15 | Push notifications | In-app notifications are implemented. Web/mobile push (FCM/VAPID) is a roadmap item, and the `notifications` table is the single source to fan out from. | |
+| 17 | Generations beyond 3 | `commission.maxGenerations` (default 3, max 50) caps the depth. With G0 = D: Gn = G(n−1)×r1 + G(n−2)×r2 + G(n−3)×r3, so D only feeds G1–G3. A package's `max_generations` still gates each beneficiary; raise it above 3 only once the business defines eligibility. `rate_bps` stores the cycled rate r[(n−1) mod 3]. | `process_commissions` |
+| 18 | Course delete | Safe delete: if a course has enrolments or lesson progress it becomes `archived` (hidden, records kept); otherwise it is hard-deleted. `courses.is_published` is a generated column (`status = 'published'`). | courses service |
 | 16 | PDF export | Statements export as CSV (opens in Excel) plus a print-friendly view for "Save as PDF". | |
 
 ## 4. Rounding
