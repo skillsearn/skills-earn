@@ -113,6 +113,7 @@ export function Upgrade() {
               <ul className="mt-4 space-y-1 text-sm text-slate-600">
                 <li>✓ {p.name} courses unlocked</li>
                 <li>✓ Generation income up to Generation {p.maxGenerations}</li>
+                <li>✓ Turnover income from Generation 4 onwards</li>
               </ul>
               <Button className="mt-5 w-full" disabled={!o.windowOpen} loading={(start.isPending && start.variables === p.id) || paying} onClick={() => start.mutate(p.id)}>
                 Upgrade to {p.name}

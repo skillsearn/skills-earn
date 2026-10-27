@@ -102,8 +102,8 @@ export function AdminSettings() {
             <Field label="Pending hold period (days)" hint="0 = credit to wallet immediately after verified payment">
               <Input type="number" min={0} value={s.commission.holdDays} onChange={(e) => setS({ ...s, commission: { ...s.commission, holdDays: Number(e.target.value) } })} />
             </Field>
-            <Field label="Generations calculated (maximum depth)" hint="Generations above the direct referrer. Each beneficiary still needs a package eligible for that generation.">
-              <Input type="number" min={1} max={50} value={s.commission.maxGenerations ?? 3} onChange={(e) => setS({ ...s, commission: { ...s.commission, maxGenerations: Number(e.target.value) } })} />
+            <Field label="Maximum generation depth" hint="Gen 1–3 follow package eligibility. Turnover income (Gen 4 up to this depth) goes to every upline with an active package. It stops by itself once amounts round to ₹0 (about Gen 20).">
+              <Input type="number" min={3} max={100} value={s.commission.maxGenerations ?? 50} onChange={(e) => setS({ ...s, commission: { ...s.commission, maxGenerations: Number(e.target.value) } })} />
             </Field>
             <Toggle checked={s.commission.directRequiresActivePackage} onChange={(v) => setS({ ...s, commission: { ...s.commission, directRequiresActivePackage: v } })} label="Direct referrer must have an active package" />
             <SaveRow m={saveC} />

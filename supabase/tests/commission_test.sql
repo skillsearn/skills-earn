@@ -88,7 +88,7 @@ begin
 end $$;
 
 -- 3. Eligibility: Xavier (under Mohan) buys Gold.
---    direct Mohan (Diamond) ✓, G1 Rohit (Gold, max 1) ✓, G2 Amit (Gold) ✗, G3 Rahul (Platinum, max 2) ✗
+--    direct Mohan (Diamond) ✓, G1 Rohit (Gold, max 1) ✓, G2 Amit (Gold) ✗, G3 Rahul (Platinum, max 2) ✗, G4 Upline ✓
 do $$
 declare p uuid := pg_temp.buy('xavier', 'gold');
 begin
@@ -96,8 +96,10 @@ begin
   perform pg_temp.expect(p, 1, 'rohit', 120.00, 'credited');
   perform pg_temp.expect(p, 2, 'amit',  114.00, 'skipped');
   perform pg_temp.expect(p, 3, 'rahul',  95.50, 'skipped');
+  -- G4 is turnover income: upline (any active package) gets 9.60 + 13.68 + 14.33
+  perform pg_temp.expect(p, 4, 'upline', 37.61, 'credited');
   -- skipped amounts are not redistributed
-  assert (select count(*) from wallet_ledger where purchase_id = p) = 2;
+  assert (select count(*) from wallet_ledger where purchase_id = p) = 3;
   raise notice 'PASS 3: package-wise eligibility, no redistribution';
 end $$;
 
@@ -213,14 +215,14 @@ begin
   raise notice 'PASS 7: dashboard, reports, announcements';
 end $$;
 
--- 8. Generations beyond 3: Gn = G(n-3)×8% + G(n-2)×12% + G(n-1)×15%, D only in G1–G3.
+-- 8. Commission model v2: G1–G3 by package, turnover income (G4+) to every upline with an active package.
+--    Gn = G(n-3)×8% + G(n-2)×12% + G(n-1)×15% from G4; D only in G1–G3.
 --    Yara (under Xavier) buys Diamond. Chain: xavier (direct) · mohan G1 · rohit G2 · amit G3 · rahul G4 · upline G5
 do $$
 declare p uuid; v_id uuid := gen_random_uuid();
 begin
-  update app_settings set value = value || '{"holdDays":0,"maxGenerations":5}' where key = 'commission';
+  update app_settings set value = value || '{"holdDays":0}' where key = 'commission';
   update app_settings set value = value || '{"referralRequired":true}' where key = 'registration';
-  update packages set max_generations = 5 where slug = 'diamond';
 
   begin
     perform create_profile(gen_random_uuid(), 'Nobody', 'nobody@test.local', '+919777777777', null);
@@ -234,14 +236,38 @@ begin
   p := pg_temp.buy('yara', 'diamond');
   perform pg_temp.expect(p, 0, 'xavier', 2400.00, 'credited');  -- Gold (bought in test 3)
   perform pg_temp.expect(p, 1, 'mohan',   360.00, 'credited');  -- Diamond
-  perform pg_temp.expect(p, 2, 'rohit',   342.00, 'skipped');   -- Gold
-  perform pg_temp.expect(p, 3, 'amit',    286.50, 'skipped');   -- Gold
-  perform pg_temp.expect(p, 4, 'rahul',   112.82, 'skipped');   -- Platinum: 28.80 + 41.04 + 42.98
-  perform pg_temp.expect(p, 5, 'upline',   78.66, 'credited');  -- Diamond:  27.36 + 34.38 + 16.92
+  perform pg_temp.expect(p, 2, 'rohit',   342.00, 'skipped');   -- Gold: G1 only
+  perform pg_temp.expect(p, 3, 'amit',    286.50, 'skipped');   -- Gold: G1 only
+  perform pg_temp.expect(p, 4, 'rahul',   112.82, 'credited');  -- turnover, any package: 28.80 + 41.04 + 42.98
+  perform pg_temp.expect(p, 5, 'upline',   78.66, 'credited');  -- turnover:               27.36 + 34.38 + 16.92
+  assert (select count(*) from commissions where purchase_id = p) = 6;  -- upline is the root, nothing deeper
   assert (select calculation from commissions where purchase_id = p and level = 4)
          = '(₹360.00 × 8%) + (₹342.00 × 12%) + (₹286.50 × 15%) = ₹112.82';
   assert (wallet_summary(pg_temp.uid('upline'))->'generationIncome'->>'5')::numeric = 78.66;
-  raise notice 'PASS 8: generation 4+ formula, configurable depth, compulsory referral';
+  assert (wallet_summary(pg_temp.uid('upline'))->>'turnoverIncome')::numeric = 116.27;  -- 37.61 (test 3) + 78.66
+  assert (wallet_summary(pg_temp.uid('rahul'))->'generationIncome'->>'4')::numeric = 112.82;
+  raise notice 'PASS 8: G1–G3 package eligibility, G4+ turnover income, compulsory referral';
+end $$;
+
+-- 9. Deep chain: turnover keeps flowing to every upline with a package until it rounds to ₹0.
+do $$
+declare p uuid; v_id uuid; v_prev text := 'yara'; k int; v_n int;
+begin
+  for k in 1..30 loop
+    v_id := gen_random_uuid();
+    insert into auth.users(id, email) values (v_id, 'deep' || k || '@test.local');
+    perform create_profile(v_id, 'Deep' || k, 'deep' || k || '@test.local', '+91955550' || lpad(k::text, 4, '0'),
+                           (select referral_code from profiles where id = pg_temp.uid(v_prev)));
+    insert into ids values ('deep' || k, v_id);
+    if k < 30 then update profiles set active_package_id = (select id from packages where slug = 'gold') where id = v_id; end if;
+    v_prev := 'deep' || k;
+  end loop;
+  p := pg_temp.buy('deep30', 'gold');   -- D = 800; ancestors: deep29 … deep1, yara, xavier, …, upline (36)
+  select max(level) into v_n from commissions where purchase_id = p;
+  assert v_n between 15 and 30, v_n::text;
+  assert not exists (select 1 from commissions where purchase_id = p and level > 3 and amount <= 0);
+  assert (select count(*) from commissions where purchase_id = p and level > 3 and status = 'credited') = v_n - 3;
+  raise notice 'PASS 9: deep turnover stops at % generations (amount reached ₹0)', v_n;
 end $$;
 
 rollback;

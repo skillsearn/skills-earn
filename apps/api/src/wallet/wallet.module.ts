@@ -105,7 +105,9 @@ export class WalletService {
       .order('level')
       .range(from, to);
     if (beneficiaryIds) query = query.in('beneficiary_id', beneficiaryIds);
-    if (q.level !== undefined && q.level !== '') query = query.eq('level', Number(q.level));
+    // 'turnover' = every generation from 4 onwards
+    if (q.level === 'turnover') query = query.gte('level', 4);
+    else if (q.level !== undefined && q.level !== '') query = query.eq('level', Number(q.level));
     if (q.status) query = query.eq('status', q.status);
     if (q.purchaseId) query = query.eq('purchase_id', q.purchaseId);
     const { data, count, error } = await query;

@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Card, Field, FilterBar, Input, KV, Modal, PageHeader, Pagination, Select, Spinner, Stat, StatusBadge, Table, Tabs, Textarea } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useDebounced, usePaged } from '../../lib/hooks';
-import { formatDate, formatDateTime, formatINR, genIncome, totalGenIncome } from '../../lib/format';
+import { formatDate, formatDateTime, formatINR } from '../../lib/format';
 import type { Commission, DownlineMember, LedgerEntry, Package, Purchase, TeamSummary, WalletSummary, Withdrawal } from '../../lib/types';
 import { commissionColumns, ledgerColumns } from '../app/Income';
 
@@ -129,7 +129,7 @@ export function AdminUserDetail() {
             items={[
               ['Email', p.email], ['Mobile', p.mobile], ['Referral code', p.referralCode],
               ['Direct referrer', p.sponsor ? <Link className="text-brand-600" to={`/admin/users/${p.sponsor.id}`}>{p.sponsor.fullName} ({p.sponsor.userCode})</Link> : '—'],
-              ['Package', p.activePackage ? `${p.activePackage.name} (G1–G${p.activePackage.maxGenerations})` : 'None'],
+              ['Package', p.activePackage ? `${p.activePackage.name} (G1–G${p.activePackage.maxGenerations} + turnover G4+)` : 'None'],
               ['Activated', formatDate(p.packageActivatedAt)], ['Joined', formatDateTime(p.createdAt)], ['Registration IP', p.registrationIp ?? '—'],
               ['Payout', p.payoutDetails?.upiId ?? p.payoutDetails?.accountNumber ?? '—'],
             ]}
@@ -139,8 +139,8 @@ export function AdminUserDetail() {
           <Stat label="Available balance" value={formatINR(w.availableBalance)} tone="brand" />
           <Stat label="On hold" value={formatINR(w.onHold)} tone="amber" />
           <Stat label="Total income" value={formatINR(w.totalIncome)} sub={`Direct ${formatINR(w.directIncome)}`} />
-          <Stat label="Generation income" value={formatINR(totalGenIncome(w))} sub={Object.keys(w.generationIncome ?? {}).map((g) => `G${g} ${formatINR(genIncome(w, Number(g)))}`).join(' · ') || 'None yet'} />
-          <Stat label="Turnover" value={formatINR(w.teamTurnover)} sub={`Team purchases · own ${formatINR(w.ownTurnover)}`} />
+          <Stat label="Generation income (G1–G3)" value={formatINR(w.gen1Income + w.gen2Income + w.gen3Income)} sub={`G1 ${formatINR(w.gen1Income)} · G2 ${formatINR(w.gen2Income)} · G3 ${formatINR(w.gen3Income)}`} />
+          <Stat label="Turnover income (G4+)" value={formatINR(w.turnoverIncome)} sub={`Team business ${formatINR(w.teamTurnover)} · own ${formatINR(w.ownTurnover)}`} />
           <Stat label="Withdrawn (net)" value={formatINR(w.totalWithdrawn)} sub={`Charges ${formatINR(w.totalCharges)}`} />
           <Stat label="Team" value={`${team.directReferrals} direct`} sub={`${team.totalDownline} total · ${team.active} active`} />
         </div>

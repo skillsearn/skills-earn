@@ -47,7 +47,7 @@ export function AdminPackages() {
             { key: 'n', header: 'Package', render: (p) => <div><p className="font-medium">{p.name}</p><p className="text-xs text-slate-500">/{p.slug}</p></div> },
             { key: 'p', header: 'Price', className: 'text-right', render: (p) => formatINR(p.price, true) },
             { key: 'd', header: 'Direct', render: (p) => pct(p.directRateBps) },
-            { key: 'g', header: 'Generation eligibility', render: (p) => (p.maxGenerations ? `G1–G${p.maxGenerations} (${p.generationRatesBps.slice(0, 3).map(pct).join(' / ')}${p.maxGenerations > 3 ? ' …' : ''})` : 'None') },
+            { key: 'g', header: 'Generation eligibility', render: (p) => `${p.maxGenerations ? `G1–G${p.maxGenerations} (${p.generationRatesBps.map(pct).join(' / ')})` : 'None'} + turnover G4+` },
             { key: 'c', header: 'Course access', render: (p) => `Level ≤ ${p.level}` },
             { key: 's', header: 'Status', render: (p) => (p.isActive ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>) },
             {
@@ -84,9 +84,9 @@ export function AdminPackages() {
             </div>
           )}
           <p className="mt-4 text-xs text-slate-500">
-            Formula: G1 = D×r1 · G2 = D×r2 + G1×r1 · G3 = D×r3 + G1×r2 + G2×r1, where D = direct commission.
-            From generation 4 the rates repeat on the previous three generations: Gn = G(n−3)×r3 + G(n−2)×r2 + G(n−1)×r1.
-            How many generations are calculated is set under Settings → Commission processing.
+            Generation income (package-gated): G1 = D×r1 · G2 = D×r2 + G1×r1 · G3 = D×r3 + G1×r2 + G2×r1, where D = direct commission.
+            Turnover income (G4+, any active package): Gn = G(n−1)×r1 + G(n−2)×r2 + G(n−3)×r3. D is not used from G4.
+            Maximum depth is set under Settings → Commission processing.
           </p>
         </Card>
         <Card title="Commission rule change history" padded={false}>
@@ -109,8 +109,10 @@ export function AdminPackages() {
               <Field label="Level (higher = better)"><Input type="number" min={1} value={editing.level} onChange={(e) => setEditing({ ...editing, level: Number(e.target.value) })} /></Field>
               <Field label="Price (₹)"><Input type="number" min={1} value={editing.price} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} /></Field>
               <Field label="Direct commission (%)"><Input type="number" step="0.01" min={0} max={100} value={editing.directRatePct} onChange={(e) => setEditing({ ...editing, directRatePct: Number(e.target.value) })} /></Field>
-              <Field label="Generation eligibility (up to generation)" hint="0 = none. Raise above 3 only after the business defines eligibility for deeper generations.">
-                <Input type="number" min={0} max={50} value={editing.maxGenerations} onChange={(e) => setEditing({ ...editing, maxGenerations: Number(e.target.value) })} />
+              <Field label="Generation income eligibility" hint="Turnover income (Gen 4+) needs any active package">
+                <Select value={editing.maxGenerations} onChange={(e) => setEditing({ ...editing, maxGenerations: Number(e.target.value) })}>
+                  <option value={0}>None</option><option value={1}>Generation 1</option><option value={2}>Generations 1–2</option><option value={3}>Generations 1–3</option>
+                </Select>
               </Field>
             </div>
             <Field label="Description"><Input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></Field>

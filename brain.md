@@ -7,8 +7,9 @@ Read this before touching money logic. It records *why* the code is the way it i
 The owner sells skill-learning **packages** (Gold ₹2,000 · Platinum ₹4,000 · Diamond ₹6,000).
 Buying a package unlocks courses for that tier. Every user gets a referral link. When
 someone buys a package, the **direct referrer** earns 40 % of it, and up to three
-**generations above the direct referrer** earn compounded generation commissions. That
-depends on each beneficiary's own package. Earnings go to an append-only wallet ledger.
+**generations above the direct referrer** earn compounded generation commissions (depending on
+each beneficiary's own package), and every upline above that with an active package earns
+**turnover income** (G4+). Earnings go to an append-only wallet ledger.
 Users withdraw on an admin-defined weekly or monthly schedule, and a 5 % platform charge
 is deducted at payout.
 
@@ -41,7 +42,7 @@ is deducted at payout.
 | 13 | Withdrawal window | Weekly: IST weekday `weeklyDay` (0 = Sun) for `windowDays` days. Monthly: IST day `monthlyDay` (1–28) for `windowDays` days. | `withdrawal_window_open()` |
 | 14 | Sponsor changes | Not allowed. The sponsor is fixed at registration, so `ancestors` never needs rewriting. | |
 | 15 | Push notifications | In-app notifications are implemented. Web/mobile push (FCM/VAPID) is a roadmap item, and the `notifications` table is the single source to fan out from. | |
-| 17 | Generations beyond 3 | `commission.maxGenerations` (default 3, max 50) caps the depth. With G0 = D: Gn = G(n−1)×r1 + G(n−2)×r2 + G(n−3)×r3, so D only feeds G1–G3. A package's `max_generations` still gates each beneficiary; raise it above 3 only once the business defines eligibility. `rate_bps` stores the cycled rate r[(n−1) mod 3]. | `process_commissions` |
+| 17 | Generations beyond 3 (client, 27 Oct 2026) | **G1–G3 = generation income**: uses D, gated by the beneficiary's package (`max_generations` 0–3). **G4+ = turnover income**: Gn = G(n−1)×r1 + G(n−2)×r2 + G(n−3)×r3 (no D), paid to every upline with *any* active package, down to `commission.maxGenerations` (default 50). The loop stops once a G4+ amount rounds to ₹0 (≈ G20). `rate_bps` stores r[(n−1) mod 3]. | `process_commissions` (0006) |
 | 18 | Course delete | Safe delete: if a course has enrolments or lesson progress it becomes `archived` (hidden, records kept); otherwise it is hard-deleted. `courses.is_published` is a generated column (`status = 'published'`). | courses service |
 | 16 | PDF export | Statements export as CSV (opens in Excel) plus a print-friendly view for "Save as PDF". | |
 

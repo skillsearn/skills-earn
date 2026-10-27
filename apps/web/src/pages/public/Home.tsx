@@ -32,6 +32,7 @@ export function PackageCards({ packages, cta = true }: { packages: Package[]; ct
                   <li key={g} className="flex gap-2 text-slate-400"><Lock className="h-4 w-4 shrink-0" /> Generation {g} — not included</li>
                 ),
               )}
+              <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /> Turnover income from Generation 4 onwards</li>
             </ul>
             {cta && (
               <Link to={`/register?package=${p.slug}`} className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-brand-300 hover:bg-neutral-800">
@@ -84,7 +85,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-4">
             {[
               [BookOpen, 'Practical courses', 'Marketing, design, English, freelancing & more'],
-              [Users, 'Referral network', 'Direct + up to 3 generations of income'],
+              [Users, 'Referral network', 'Direct, generation & turnover income'],
               [Wallet, 'Transparent wallet', 'Every rupee recorded in your ledger'],
               [ShieldCheck, 'Secure payouts', 'Scheduled withdrawals to bank or UPI'],
             ].map(([Icon, title, text]) => {
@@ -142,7 +143,7 @@ export default function Home() {
             <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
               <p className="font-semibold text-slate-900">Example: Mohan buys Diamond for ₹6,000</p>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                {[['Mohan', 'buys'], ['Rohit', 'Direct'], ['Amit', 'Gen 1'], ['Rahul', 'Gen 2'], ['Suresh', 'Gen 3']].map(([who, tag], i) => (
+                {[['Mohan', 'buys'], ['Rohit', 'Direct'], ['Amit', 'Gen 1'], ['Rahul', 'Gen 2'], ['Suresh', 'Gen 3'], ['Vikas', 'Gen 4'], ['Neha', 'Gen 5']].map(([who, tag], i) => (
                   <span key={who} className="flex items-center gap-2">
                     {i > 0 && <ArrowRight className="h-4 w-4 text-brand-500" />}
                     <span className={`rounded-full px-3 py-1 font-medium ${i === 0 ? 'bg-ink text-brand-300' : 'bg-brand-50 text-brand-700 ring-1 ring-brand-200'}`}>
@@ -151,7 +152,7 @@ export default function Home() {
                   </span>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-slate-500">Mohan used Rohit's link. Rohit was referred by Amit, Amit by Rahul, and Rahul by Suresh.</p>
+              <p className="mt-2 text-xs text-slate-500">Mohan used Rohit's link. Rohit was referred by Amit, Amit by Rahul, Rahul by Suresh, Suresh by Vikas, and Vikas by Neha.</p>
             </div>
             <ul className="divide-y divide-slate-200">
               {[
@@ -159,6 +160,8 @@ export default function Home() {
                 ['Amit', 'Generation 1', '₹2,400 × 15%', '₹360.00'],
                 ['Rahul', 'Generation 2', '₹2,400 × 12% + ₹360 × 15%', '₹342.00'],
                 ['Suresh', 'Generation 3', '₹2,400 × 8% + ₹360 × 12% + ₹342 × 15%', '₹286.50'],
+                ['Vikas', 'Generation 4 · turnover', '₹360 × 8% + ₹342 × 12% + ₹286.50 × 15%', '₹112.82'],
+                ['Neha', 'Generation 5 · turnover', '₹342 × 8% + ₹286.50 × 12% + ₹112.82 × 15%', '₹78.66'],
               ].map(([who, role, calc, amt]) => (
                 <li key={who} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-5 py-3 sm:grid-cols-[10rem_1fr_auto] sm:px-6">
                   <p className="font-medium text-slate-900">{who} <span className="block text-xs font-normal text-slate-500">{role}</span></p>
@@ -168,7 +171,8 @@ export default function Home() {
               ))}
             </ul>
             <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500 sm:px-6">
-              Each person earns only the levels their own package allows: Gold → Generation 1, Platinum → Generations 1–2, Diamond → Generations 1–3.
+              Generation income (Gen 1–3) depends on each person's own package: Gold → Generation 1, Platinum → Generations 1–2, Diamond → Generations 1–3.
+              Turnover income (Gen 4 onwards) goes to every upline with an active package and continues up the network.
             </p>
           </div>
         </div>

@@ -3,9 +3,35 @@ import { Download, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, Card, Column, FilterBar, Field, Input, PageHeader, Pagination, Select, Stat, StatusBadge, Table, Tabs } from '../../components/ui';
 import { api, qs } from '../../lib/api';
-import { useGenerations, usePaged } from '../../lib/hooks';
-import { formatDateTime, formatINR, genIncome, LEDGER_TYPES, levelLabel } from '../../lib/format';
+import { usePaged } from '../../lib/hooks';
+import { formatDateTime, formatINR, LEDGER_TYPES, levelLabel } from '../../lib/format';
 import type { Commission, LedgerEntry, WalletSummary } from '../../lib/types';
+
+/** Options for the commission "Type" filter: direct, the three generation levels, and all turnover levels. */
+export const LevelOptions = () => (
+  <>
+    <option value="">All</option>
+    <option value="0">Direct</option>
+    <option value="1">Generation 1</option>
+    <option value="2">Generation 2</option>
+    <option value="3">Generation 3</option>
+    <option value="turnover">Turnover income (Gen 4+)</option>
+  </>
+);
+
+/** Plain-language summary of the commission model, shown to members. */
+export function IncomeGuide() {
+  return (
+    <Card title="How your income is calculated">
+      <ol className="space-y-2 text-sm text-slate-600">
+        <li><b className="text-slate-900">Direct income:</b> 40% of the package price when someone joins with your referral code (D).</li>
+        <li><b className="text-slate-900">Generation income (Gen 1–3):</b> paid from D. Gen 1 = D × 15% · Gen 2 = D × 12% + Gen 1 × 15% · Gen 3 = D × 8% + Gen 1 × 12% + Gen 2 × 15%. Your package decides how many you get: Gold Gen 1, Platinum Gen 1–2, Diamond Gen 1–3.</li>
+        <li><b className="text-slate-900">Turnover income (Gen 4 onwards):</b> paid to every upline with an active package, from the three generations before it: Gen n = Gen(n−1) × 15% + Gen(n−2) × 12% + Gen(n−3) × 8%.</li>
+      </ol>
+      <p className="mt-3 text-xs text-slate-500">If you are not eligible for a level, that amount is not passed on to anyone else.</p>
+    </Card>
+  );
+}
 
 export const commissionColumns = (showBeneficiary = false): Column<Commission>[] => [
   { key: 'date', header: 'Date', render: (c) => formatDateTime(c.createdAt) },
@@ -40,7 +66,6 @@ export default function Income() {
   const commissions = usePaged<Commission>('commissions', '/me/commissions', { level, status });
   const ledger = usePaged<LedgerEntry>('ledger', '/me/wallet/ledger', { type, from, to });
   const w = summary.data;
-  const generations = useGenerations();
 
   return (
     <>
@@ -64,10 +89,13 @@ export default function Income() {
         <Stat label="Pending commission" value={w ? formatINR(w.pendingCommission) : '—'} tone="amber" />
         <Stat label="Platform charges paid" value={w ? formatINR(w.totalCharges) : '—'} />
         <Stat label="Direct" value={w ? formatINR(w.directIncome) : '—'} tone="sky" />
-        {generations.map((g) => <Stat key={g} label={`Generation ${g}`} value={w ? formatINR(genIncome(w, g)) : '—'} tone="sky" />)}
-        <Stat label="My purchases (turnover)" value={w ? formatINR(w.ownTurnover) : '—'} />
-        <Stat label="Team turnover" value={w ? formatINR(w.teamTurnover) : '—'} sub="Purchases by your downline · not income" />
+        <Stat label="Generation 1" value={w ? formatINR(w.gen1Income) : '—'} tone="sky" />
+        <Stat label="Generation 2" value={w ? formatINR(w.gen2Income) : '—'} tone="sky" />
+        <Stat label="Generation 3" value={w ? formatINR(w.gen3Income) : '—'} tone="sky" />
+        <Stat label="Turnover income" value={w ? formatINR(w.turnoverIncome) : '—'} sub="Generation 4 onwards" tone="green" />
+        <Stat label="Team business" value={w ? formatINR(w.teamTurnover) : '—'} sub={`Package purchases by your team · yours ${w ? formatINR(w.ownTurnover) : '—'}`} />
       </div>
+      <div className="mb-6"><IncomeGuide /></div>
       <Card padded={false}>
         <div className="px-4 pt-2">
           <Tabs value={tab} onChange={setTab} tabs={[{ value: 'commissions', label: 'Commission breakdown' }, { value: 'ledger', label: 'Wallet transactions' }]} />
@@ -77,9 +105,7 @@ export default function Income() {
             <FilterBar>
               <Field label="Type">
                 <Select value={level} onChange={(e) => setLevel(e.target.value)}>
-                  <option value="">All</option>
-                  <option value="0">Direct</option>
-                  {generations.map((g) => <option key={g} value={g}>Generation {g}</option>)}
+                  <LevelOptions />
                 </Select>
               </Field>
               <Field label="Status">

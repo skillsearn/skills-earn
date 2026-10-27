@@ -21,6 +21,7 @@ interface AdminDashboard {
   pendingPayments: number;
   directCommissions: number;
   generationCommissions: number;
+  turnoverCommissions: number;
   pendingCommissions: number;
   skippedCommissions: number;
   pendingWithdrawalsCount: number;
@@ -88,7 +89,8 @@ export function AdminDashboard() {
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-slate-500">Commissions & payouts</h2>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Direct commissions" value={formatINR(d.directCommissions)} icon={<Layers className={ic} />} tone="sky" />
-        <Stat label="Generation commissions" value={formatINR(d.generationCommissions)} sub={`Pending ${formatINR(d.pendingCommissions)} · Skipped ${formatINR(d.skippedCommissions)}`} icon={<Layers className={ic} />} tone="sky" />
+        <Stat label="Generation commissions (G1–G3)" value={formatINR(d.generationCommissions)} sub={`Pending ${formatINR(d.pendingCommissions)} · Skipped ${formatINR(d.skippedCommissions)}`} icon={<Layers className={ic} />} tone="sky" />
+        <Stat label="Turnover commissions (G4+)" value={formatINR(d.turnoverCommissions)} icon={<Layers className={ic} />} tone="green" />
         <Stat label="Pending withdrawals" value={d.pendingWithdrawalsCount} sub={formatINR(d.pendingWithdrawalsAmount)} icon={<Banknote className={ic} />} tone="amber" />
         <Stat label="Successful payouts" value={formatINR(d.successfulPayouts)} sub={`Platform charges ${formatINR(d.platformCharges)}`} icon={<Percent className={ic} />} tone="green" />
       </div>
@@ -179,7 +181,7 @@ export function AdminReports() {
               { key: 'sc', header: 'Sales', className: 'text-right', render: (r) => r.salesCount },
               { key: 'sa', header: 'Sales amount', className: 'text-right', render: (r) => formatINR(r.salesAmount) },
               { key: 'dc', header: 'Direct comm.', className: 'text-right', render: (r) => formatINR(r.directCommission) },
-              { key: 'gc', header: 'Generation comm.', className: 'text-right', render: (r) => formatINR(r.generationCommission) },
+              { key: 'gc', header: 'Gen + turnover comm.', className: 'text-right', render: (r) => formatINR(r.generationCommission) },
               { key: 'po', header: 'Payouts (net)', className: 'text-right', render: (r) => formatINR(r.payouts) },
               { key: 'ch', header: 'Platform charges', className: 'text-right', render: (r) => formatINR(r.charges) },
             ]}

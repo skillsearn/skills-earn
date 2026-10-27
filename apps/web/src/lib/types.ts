@@ -62,6 +62,7 @@ export interface WalletSummary {
   gen1Income: number;
   gen2Income: number;
   gen3Income: number;
+  turnoverIncome: number;
   generationIncome: Record<string, number>;
   skippedCommission: number;
   ownTurnover: number;

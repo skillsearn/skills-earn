@@ -83,7 +83,7 @@ export function Profile() {
           <KV
             items={[
               ['Active package', me.activePackage?.name ?? 'None'],
-              ['Generation eligibility', me.activePackage ? `Generations 1–${me.activePackage.maxGenerations}` : '—'],
+              ['Income eligibility', me.activePackage ? `Generation 1–${me.activePackage.maxGenerations} · Turnover Gen 4+` : '—'],
               ['Activated on', formatDate(me.packageActivatedAt)],
               ['Course access', <Link to="/app/courses" className="text-brand-600">View courses</Link>],
             ]}

@@ -2,22 +2,24 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Badge, Card, FilterBar, Input, PageHeader, Pagination, Stat, Table, Tabs } from '../../components/ui';
 import { api } from '../../lib/api';
-import { useDebounced, useGenerations, usePaged } from '../../lib/hooks';
+import { useDebounced, usePaged } from '../../lib/hooks';
 import { formatDate } from '../../lib/format';
 import type { DownlineMember, TeamSummary } from '../../lib/types';
 import { ReferralCard } from './Dashboard';
 
-/** From the viewer's point of view: L1 purchases pay direct, L2 pays G1, L3 pays G2, … */
-const depthLabel = (d: number) => (d === 1 ? 'Direct referrals' : `Level ${d} · earns you Gen ${d - 1}`);
+/** From the viewer's point of view: L1 purchases pay direct, L2–L4 pay generation 1–3, L5+ pay turnover income. */
+const depthLabel = (d: number) =>
+  d === 1 ? 'Direct referrals' : d <= 4 ? `Level ${d} · earns you Gen ${d - 1}` : `Level ${d} · earns you turnover (Gen ${d - 1})`;
 
 export default function Team() {
   const summary = useQuery({ queryKey: ['team-summary'], queryFn: () => api.get<TeamSummary>('/me/team/summary') });
   const [depth, setDepth] = useState<string>('all');
-  const levels = [1, ...useGenerations().map((g) => g + 1)];
   const [search, setSearch] = useState('');
   const q = useDebounced(search);
   const list = usePaged<DownlineMember>('team', '/me/team', { depth: depth === 'all' ? undefined : depth, search: q });
   const s = summary.data;
+  const deeper = Object.keys(s?.byDepth ?? {}).map(Number).filter((d) => d > 4).sort((a, b) => a - b);
+  const levels = [1, 2, 3, 4, ...deeper];
 
   return (
     <>
@@ -39,7 +41,7 @@ export default function Team() {
             value={depth}
             onChange={setDepth}
             tabs={[
-              { value: 'all', label: `All (${levels.length} levels)` },
+              { value: 'all', label: 'All levels' },
               ...levels.map((d) => ({
                 value: String(d),
                 label: `${depthLabel(d).split(' · ')[0]} (${s?.byDepth?.[d] ?? 0})`,

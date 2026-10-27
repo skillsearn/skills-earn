@@ -64,7 +64,7 @@ const EXPORTS: Record<string, { table: string; select: string; date: string; col
     ],
     flatten: (r) => ({
       ...r, source: r.source?.user_code, beneficiary: `${r.beneficiary?.user_code} ${r.beneficiary?.full_name}`,
-      level_label: r.level === 0 ? 'Direct' : `Generation ${r.level}`,
+      level_label: r.level === 0 ? 'Direct' : r.level <= 3 ? `Generation ${r.level}` : `Turnover (Generation ${r.level})`,
     }),
   },
   withdrawals: {

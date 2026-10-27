@@ -26,7 +26,7 @@ export class UpgradeSettingsDto {
 export class CommissionSettingsDto {
   @IsInt() @Min(0) @Max(365) holdDays: number;
   @IsBoolean() directRequiresActivePackage: boolean;
-  @IsInt() @Min(1) @Max(50) maxGenerations: number; // generations above the direct referrer that are calculated
+  @IsInt() @Min(3) @Max(100) maxGenerations: number; // generations above the direct referrer that are calculated (G4+ = turnover income)
 }
 
 export class RegistrationSettingsDto {
@@ -97,7 +97,7 @@ export class SettingsService {
         nextWindowStart: nextWindowStart(s.withdrawal),
       },
       upgrade: { windowDays: s.upgrade.windowDays },
-      commission: { maxGenerations: s.commission.maxGenerations ?? 3 },
+      commission: { maxGenerations: s.commission.maxGenerations ?? 50 },
       registration: s.registration,
     };
   }

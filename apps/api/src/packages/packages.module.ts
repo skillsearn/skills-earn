@@ -25,7 +25,7 @@ export class CreatePackageDto {
   @IsInt() @Min(1) @Max(99) level: number;
   @IsNumber() @Min(1) price: number;
   @IsInt() @Min(0) @Max(10000) directRateBps: number;
-  @IsInt() @Min(0) @Max(50) maxGenerations: number;
+  @IsInt() @Min(0) @Max(3) maxGenerations: number; // generation income eligibility (G1–G3)
   @IsOptional() @IsString() @MaxLength(500) description?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) features?: string[];
   @IsOptional() @IsBoolean() isActive?: boolean;
@@ -65,7 +65,7 @@ export class PackagesService {
     ) as { id: number; generation_rates_bps: number[] };
   }
 
-  /** Packages with the generation rates they are eligible for (global 3-rate cycle, up to max_generations). */
+  /** Packages with the G1–G3 rates they are eligible for. Turnover income (G4+) needs any active package. */
   async list(includeInactive = false) {
     let q = this.supabase.db.from('packages').select('*').order('level');
     if (!includeInactive) q = q.eq('is_active', true);
@@ -77,7 +77,7 @@ export class PackagesService {
     return {
       ...toCamel<Record<string, unknown>>(p),
       price: Number(p.price),
-      generationRatesBps: Array.from({ length: p.max_generations }, (_, i) => rates[i % rates.length]),
+      generationRatesBps: rates.slice(0, p.max_generations),
     };
   }
 

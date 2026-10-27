@@ -23,7 +23,7 @@ export class ReferralsService {
   /** Levels a member earns from: L1 pays direct, L(n+1) pays generation n. */
   async earningDepth() {
     const c = await this.settings.get('commission');
-    return (c.maxGenerations ?? 3) + 1;
+    return (c.maxGenerations ?? 50) + 1;
   }
 
   async validate(code: string) {
@@ -86,7 +86,7 @@ export class ReferralsService {
     const upline = me.ancestors.map((id, i) => ({
       ...toCamel<object>(byId.get(id)),
       position: i + 1,
-      role: i === 0 ? 'Direct Referrer (sponsor)' : i < depth ? `Generation ${i}` : `Upline ${i + 1}`,
+      role: i === 0 ? 'Direct Referrer (sponsor)' : i <= 3 ? `Generation ${i}` : i < depth ? `Turnover · Generation ${i}` : `Upline ${i + 1}`,
     }));
     const team = await this.supabase.rpc('team_summary', { p_user: userId });
     return { upline, team };

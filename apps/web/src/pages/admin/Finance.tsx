@@ -4,10 +4,10 @@ import { ReactNode, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Card, Field, FilterBar, Input, KV, Modal, PageHeader, Pagination, Select, Spinner, StatusBadge, Table, Tabs, Textarea } from '../../components/ui';
 import { api, qs } from '../../lib/api';
-import { useDebounced, useGenerations, usePaged } from '../../lib/hooks';
+import { useDebounced, usePaged } from '../../lib/hooks';
 import { formatDateTime, formatINR, humanize, LEDGER_TYPES, levelLabel } from '../../lib/format';
 import type { Commission, LedgerEntry, PayoutGatewayStatus, Purchase, Withdrawal } from '../../lib/types';
-import { commissionColumns, ledgerColumns } from '../app/Income';
+import { commissionColumns, ledgerColumns, LevelOptions } from '../app/Income';
 import { Breakdown } from '../app/Withdrawals';
 
 const userCell = (u?: { userCode: string; fullName: string; mobile?: string }) =>
@@ -122,14 +122,13 @@ export function AdminCommissions() {
   const [level, setLevel] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
-  const generations = useGenerations();
   const list = usePaged<Commission>('admin-commissions', '/admin/commissions', { level, status, search: useDebounced(search) });
   const release = useMutation({ mutationFn: () => api.post<{ released: number }>('/admin/commissions/release'), onSuccess: () => qc.invalidateQueries() });
   return (
     <>
       <PageHeader
         title="Commissions"
-        subtitle="Purchase-wise direct and generation commission breakdown with processing status."
+        subtitle="Purchase-wise direct, generation (G1–G3) and turnover (G4+) commission breakdown with processing status."
         actions={
           <>
             <Button variant="secondary" loading={release.isPending} onClick={() => release.mutate()}><RefreshCw className="h-4 w-4" /> Release matured pending</Button>
@@ -143,8 +142,7 @@ export function AdminCommissions() {
           <Field label="Beneficiary"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User ID, name, mobile" /></Field>
           <Field label="Level">
             <Select value={level} onChange={(e) => setLevel(e.target.value)}>
-              <option value="">All</option><option value="0">Direct</option>
-              {generations.map((g) => <option key={g} value={g}>Generation {g}</option>)}
+              <LevelOptions />
             </Select>
           </Field>
           <Field label="Status">
