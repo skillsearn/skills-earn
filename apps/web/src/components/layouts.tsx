@@ -46,9 +46,9 @@ export function PublicLayout() {
   const { pathname } = useLocation();
   useEffect(() => setOpen(false), [pathname]);
   const links = [
-    ['/#packages', 'Packages'],
-    ['/#how-it-works', 'How it works'],
     ['/#courses', 'Courses'],
+    ['/#packages', 'Pricing'],
+    ['/#how-it-works', 'How it works'],
     ['/#faq', 'FAQ'],
   ];
   return (
@@ -74,7 +74,7 @@ export function PublicLayout() {
                   Log in
                 </Link>
                 <Link to="/register" className="btn-gold rounded-lg px-4 py-2 text-sm font-semibold">
-                  Join now
+                  Get started
                 </Link>
               </>
             )}
@@ -95,7 +95,7 @@ export function PublicLayout() {
             </Link>
             {!me && (
               <Link to="/register" className="btn-gold block rounded-lg px-3 py-2 text-center text-sm font-semibold">
-                Join now
+                Get started
               </Link>
             )}
           </div>
@@ -108,12 +108,13 @@ export function PublicLayout() {
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 text-sm sm:grid-cols-3">
           <div>
             <Logo light />
-            <p className="mt-3">Learn in-demand skills. Share what you learn. Earn as your network grows.</p>
+            <p className="mt-3">Practical online courses to learn job-ready skills at your own pace, on any device.</p>
           </div>
           <div className="space-y-2">
             <p className="font-semibold text-white">Platform</p>
-            <a href="/#packages" className="block hover:text-white">Packages</a>
             <a href="/#courses" className="block hover:text-white">Courses</a>
+            <a href="/#packages" className="block hover:text-white">Pricing</a>
+            <a href="/#faq" className="block hover:text-white">FAQ</a>
             <Link to="/terms" className="block hover:text-white">Terms & Conditions</Link>
           </div>
           <div className="space-y-2">
