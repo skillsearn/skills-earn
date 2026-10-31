@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, RefreshCw, Send } from 'lucide-react';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Card, Field, FilterBar, Input, KV, Modal, PageHeader, Pagination, Select, Spinner, StatusBadge, Table, Tabs, Textarea } from '../../components/ui';
 import { api, qs } from '../../lib/api';
@@ -16,13 +16,16 @@ const userCell = (u?: { userCode: string; fullName: string; mobile?: string }) =
 // ───────────────────────── Payments ─────────────────────────
 export function AdminPayments() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState('pending');
+  const [status, setStatus] = useState('review');
   const [type, setType] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
-  const list = usePaged<Purchase>('admin-payments', '/admin/payments', { status: status === 'all' ? '' : status, type, search: useDebounced(search) });
+  const list = usePaged<Purchase>('admin-payments', '/admin/payments', {
+    status: status === 'all' ? '' : status === 'review' ? 'pending' : status,
+    proof: status === 'review' ? 'submitted' : '', type, search: useDebounced(search),
+  });
   const detail = useQuery({
     queryKey: ['admin-payment', selected],
     queryFn: () => api.get<{ purchase: Purchase; events: { id: number; event: string; provider: string; createdAt: string; payload: unknown }[]; commissions: Commission[] }>(`/admin/payments/${selected}`),
@@ -32,13 +35,14 @@ export function AdminPayments() {
   const verify = useMutation({ mutationFn: () => api.post(`/admin/payments/${selected}/verify`, { reference, note: note || undefined }), onSuccess: done });
   const fail = useMutation({ mutationFn: () => api.post(`/admin/payments/${selected}/fail`, { note: note || undefined }), onSuccess: done });
   const p = detail.data?.purchase;
+  useEffect(() => { if (p?.manualUtr && p.status !== 'paid') setReference(p.manualUtr); }, [p?.id, p?.manualUtr, p?.status]);
 
   return (
     <>
       <PageHeader title="Payments" subtitle="Purchase history, gateway transactions, pending/failed payments and reconciliation." />
       <Card padded={false}>
         <div className="px-4 pt-2">
-          <Tabs value={status} onChange={setStatus} tabs={['pending', 'paid', 'failed', 'cancelled', 'all'].map((s) => ({ value: s, label: humanize(s) }))} />
+          <Tabs value={status} onChange={setStatus} tabs={['review', 'pending', 'paid', 'failed', 'cancelled', 'all'].map((s) => ({ value: s, label: s === 'review' ? 'Screenshot submitted' : humanize(s) }))} />
         </div>
         <FilterBar>
           <Field label="Search user"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User ID, name, mobile" /></Field>
@@ -54,7 +58,7 @@ export function AdminPayments() {
             { key: 'u', header: 'User', render: (r) => userCell(r.user) },
             { key: 't', header: 'Package', render: (r) => (r.type === 'upgrade' ? `${r.fromPackage?.name} → ${r.package?.name}` : r.package?.name) },
             { key: 'a', header: 'Amount', className: 'text-right', render: (r) => formatINR(r.amount) },
-            { key: 'pr', header: 'Provider', render: (r) => r.provider ?? '—' },
+            { key: 'pr', header: 'Method', render: (r) => (r.manualSubmittedAt && r.status !== 'paid' ? <span className="text-xs"><b className="text-sky-700">Manual</b><br /><span className="font-mono">{r.manualUtr}</span></span> : r.provider ?? '—') },
             { key: 's', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'c', header: 'Commission', render: (r) => <StatusBadge status={r.commissionStatus} /> },
           ]}
@@ -72,6 +76,26 @@ export function AdminPayments() {
               ['Status', <StatusBadge status={p.status} />], ['Provider / ref', `${p.provider ?? '—'} · ${p.providerPaymentId ?? '—'}`],
               ['Paid at', formatDateTime(p.paidAt)], ['Notes', p.notes ?? '—'],
             ]} />
+            {(p.proofUrl || p.manualUtr) && (
+              <div className="grid gap-4 rounded-lg border border-sky-200 bg-sky-50/50 p-4 sm:grid-cols-2">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Payment screenshot</h4>
+                  {p.proofUrl
+                    ? <a href={p.proofUrl} target="_blank" rel="noreferrer" title="Open full size"><img src={p.proofUrl} alt="Payment screenshot" className="max-h-96 w-full rounded-lg border border-slate-200 bg-white object-contain" /></a>
+                    : <p className="text-sm text-slate-500">Image unavailable.</p>}
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Submitted by member</h4>
+                  <KV items={[
+                    ['UTR / Txn ID', <span className="flex items-center justify-end gap-2 font-mono">{p.manualUtr ?? '—'}</span>],
+                    ['Amount due', formatINR(p.amount)],
+                    ['Submitted', formatDateTime(p.manualSubmittedAt)],
+                    ['Member note', p.manualNote ?? '—'],
+                  ]} />
+                  <p className="mt-3 text-xs text-slate-600">Match the UTR and amount against your bank / UPI statement before verifying.</p>
+                </div>
+              </div>
+            )}
             {detail.data!.commissions.length > 0 && (
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Commission breakdown</h4>
@@ -178,7 +202,7 @@ export function AdminWithdrawals() {
   const list = usePaged<Withdrawal>('admin-withdrawals', '/admin/withdrawals', { status: status === 'all' ? '' : status, search: useDebounced(search) });
   const detail = useQuery({
     queryKey: ['admin-withdrawal', selected],
-    queryFn: () => api.get<{ withdrawal: Withdrawal; events: { id: number; fromStatus: string | null; toStatus: string; note: string | null; createdAt: string; actor: { userCode: string } | null }[]; ledger: LedgerEntry[]; wallet: { availableBalance: number } }>(`/admin/withdrawals/${selected}`),
+    queryFn: () => api.get<{ withdrawal: Withdrawal; events: { id: number; fromStatus: string | null; toStatus: string; note: string | null; createdAt: string; actor: { userCode: string } | null }[]; ledger: LedgerEntry[]; wallet: { availableBalance: number }; upiQrUrl: string | null }>(`/admin/withdrawals/${selected}`),
     enabled: !!selected,
   });
   const act = useMutation({
@@ -232,6 +256,12 @@ export function AdminWithdrawals() {
               </div>
               <div>
                 <h4 className="mb-1 text-sm font-semibold">Payout to</h4>
+                {detail.data!.upiQrUrl && (
+                  <a href={detail.data!.upiQrUrl} target="_blank" rel="noreferrer" className="mb-2 block" title="Open full size">
+                    <img src={detail.data!.upiQrUrl} alt="Member UPI QR" className="h-40 w-40 rounded-lg border border-slate-200 object-contain" />
+                    <span className="text-xs text-slate-500">Member's UPI QR · scan to pay</span>
+                  </a>
+                )}
                 <KV items={[
                   ['User', w.user ? <Link className="text-brand-600" to={`/admin/users/${w.user.id}`}>{w.user.fullName} ({w.user.userCode})</Link> : '—'],
                   ['Method', w.method.toUpperCase()],

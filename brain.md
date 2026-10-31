@@ -91,6 +91,15 @@ counsel before launch.
 * UPI payouts are capped at ₹1,00,000; larger amounts must go to a bank account (IMPS up to ₹5L, NEFT above).
 * The ledger is never rewound automatically. A reversal after `paid` raises a high fraud alert for an admin adjustment.
 
+## 7b. Manual payments (0007)
+
+* Checkout offers **Pay online** (Razorpay) and **UPI / Bank transfer**. If the Razorpay order cannot be created, checkout falls back to manual only (when `manualPayment.enabled`).
+* The member pays to the admin details in Settings → Manual payment (UPI ID, bank, QR), then uploads a screenshot + UTR. The purchase stays `pending` with `manual_proof_path/manual_utr/manual_submitted_at` set. Admins get a notification.
+* Admin verifies in Payments → *Screenshot submitted*: "Mark verified" calls the same `activate_purchase` (provider `manual`, ref `manual_<UTR>`; the unique ref blocks re-use). "Mark failed" notifies the member, who can upload again.
+* A UTR already used on another pending/paid purchase is rejected and raises a `manual_utr_reused` fraud alert.
+* Files are in the **private** Supabase Storage bucket `uploads` (5 MB, png/jpeg/webp), written by the API with the service role and shown only through signed URLs. Members' UPI QR is `payout_details.upiQrPath`; it is preserved when payout details are edited.
+* The API JSON body limit is 8 MB for base64 uploads; the browser downsizes images first.
+
 ## 8. Roadmap
 
 Push notifications (FCM) · KYC/PAN capture (TDS u/s 194H)

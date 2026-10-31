@@ -31,6 +31,7 @@ export interface Me {
   status: 'active' | 'suspended';
   packageActivatedAt: string | null;
   payoutDetails: PayoutDetails | null;
+  upiQrUrl?: string | null;
   createdAt: string;
   activePackage: { id: string; name: string; slug: string; level: number; price: string; maxGenerations: number } | null;
   sponsor: { userCode: string; fullName: string } | null;
@@ -42,6 +43,7 @@ export interface PayoutDetails {
   accountNumber?: string;
   ifsc?: string;
   bankName?: string;
+  upiQrPath?: string;
 }
 
 export interface Session {
@@ -116,6 +118,11 @@ export interface Purchase {
   commissionStatus: string;
   createdAt: string;
   notes: string | null;
+  manualProofPath?: string | null;
+  manualUtr?: string | null;
+  manualNote?: string | null;
+  manualSubmittedAt?: string | null;
+  proofUrl?: string | null;
   package: { name: string; level: number } | null;
   fromPackage: { name: string; level: number } | null;
   user?: { id?: string; userCode: string; fullName: string; mobile: string; email?: string };
@@ -183,7 +190,10 @@ export interface CheckoutPayload {
   type: 'new' | 'upgrade';
   packageName: string;
   amount: number;
-  provider: 'razorpay' | 'mock';
+  provider: 'razorpay' | 'mock' | 'manual';
+  status: string;
+  manual: ManualPaymentInfo | null;
+  proof: { utr: string | null; submittedAt: string | null } | null;
   keyId?: string;
   orderId?: string;
   amountPaise?: number;
@@ -228,4 +238,16 @@ export interface Lesson {
   isPreview: boolean;
   locked?: boolean;
   completed?: boolean;
+}
+
+export interface ManualPaymentInfo {
+  enabled: boolean;
+  upiId?: string;
+  payeeName?: string;
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  ifsc?: string;
+  instructions?: string;
+  qrUrl: string | null;
 }

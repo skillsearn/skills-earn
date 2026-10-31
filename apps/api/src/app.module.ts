@@ -9,6 +9,7 @@ import { CommonModule } from './common/audit.service';
 import { AuthGuard } from './common/auth';
 import { validateEnv } from './common/env';
 import { SupabaseModule } from './common/supabase.service';
+import { UploadsModule } from './common/uploads.service';
 import { CoursesModule } from './courses/courses.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -26,6 +27,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     ScheduleModule.forRoot(),
     SupabaseModule,
+    UploadsModule,
     CommonModule,
     AuthModule,
     SettingsModule,

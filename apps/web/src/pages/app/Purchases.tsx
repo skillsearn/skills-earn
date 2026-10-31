@@ -6,7 +6,6 @@ import { api } from '../../lib/api';
 import { formatDate, formatDateTime, formatINR, packageColor } from '../../lib/format';
 import type { CheckoutPayload, Package, Purchase } from '../../lib/types';
 import { PackageCards } from '../public/Home';
-import { usePay } from './Checkout';
 
 export function Purchases() {
   const { data } = useQuery({ queryKey: ['purchases'], queryFn: () => api.get<Purchase[]>('/me/purchases') });
@@ -26,7 +25,9 @@ export function Purchases() {
             { key: 'paid', header: 'Verified', render: (p) => formatDate(p.paidAt) },
             {
               key: 'action', header: '', render: (p) =>
-                ['pending', 'failed'].includes(p.status) ? <Link to={`/app/checkout/${p.id}`} className="text-sm font-semibold text-brand-600">Pay now</Link> : null,
+                ['pending', 'failed'].includes(p.status)
+                  ? <Link to={`/app/checkout/${p.id}`} className="text-sm font-semibold text-brand-600">{p.status === 'pending' && p.manualSubmittedAt ? 'Under review' : 'Pay now'}</Link>
+                  : null,
             },
           ]}
         />
@@ -47,10 +48,9 @@ export function Upgrade() {
   const navigate = useNavigate();
   const opts = useQuery({ queryKey: ['upgrade-options'], queryFn: () => api.get<UpgradeOptions>('/payments/upgrade-options'), retry: false });
   const packages = useQuery({ queryKey: ['packages'], queryFn: () => api.get<Package[]>('/packages') });
-  const { pay, paying, error: payError } = usePay(() => navigate('/app/purchases'));
   const start = useMutation({
     mutationFn: (packageId: string) => api.post<CheckoutPayload>('/payments/upgrade', { packageId }),
-    onSuccess: (payload) => pay(payload),
+    onSuccess: (payload) => navigate(`/app/checkout/${payload.purchaseId}`),
   });
   const buy = useMutation({
     mutationFn: (packageId: string) => api.post<CheckoutPayload>('/payments/checkout', { packageId }),
@@ -78,7 +78,7 @@ export function Upgrade() {
   }
 
   const o = opts.data!;
-  const err = start.error ?? (payError ? new Error(payError) : null);
+  const err = start.error;
   return (
     <>
       <PageHeader title="Upgrade package" subtitle="Pay only the price difference. Course access and generation eligibility update instantly." />
@@ -115,7 +115,7 @@ export function Upgrade() {
                 <li>✓ Generation income up to Generation {p.maxGenerations}</li>
                 <li>✓ Turnover income from Generation 4 onwards</li>
               </ul>
-              <Button className="mt-5 w-full" disabled={!o.windowOpen} loading={(start.isPending && start.variables === p.id) || paying} onClick={() => start.mutate(p.id)}>
+              <Button className="mt-5 w-full" disabled={!o.windowOpen} loading={(start.isPending && start.variables === p.id)} onClick={() => start.mutate(p.id)}>
                 Upgrade to {p.name}
               </Button>
             </Card>

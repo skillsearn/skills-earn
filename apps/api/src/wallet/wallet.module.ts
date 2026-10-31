@@ -54,7 +54,7 @@ export class WalletService {
       this.supabase.db.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5).then(unwrap),
     ]);
     const { data: pending } = await this.supabase.db
-      .from('purchases').select('id, type, amount, package:packages!purchases_package_id_fkey(name)')
+      .from('purchases').select('id, type, amount, manual_submitted_at, package:packages!purchases_package_id_fkey(name)')
       .eq('user_id', user.id).eq('status', 'pending').order('created_at', { ascending: false }).limit(1);
     return toCamel({
       profile,

@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Card, Field, FilterBar, Input, PageHeader, Pagina
 import { api } from '../../lib/api';
 import { useDebounced, usePaged } from '../../lib/hooks';
 import { formatDateTime, humanize, scheduleText, WEEKDAYS } from '../../lib/format';
+import { imageToDataUrl } from '../../lib/image';
 
 interface Settings {
   withdrawal: { mode: 'weekly' | 'monthly'; weeklyDay: number; monthlyDay: number; windowDays: number; minAmount: number; chargeBps: number; processingEnabled: boolean; manualPayoutConfirmation: boolean };
@@ -116,8 +117,72 @@ export function AdminSettings() {
             <SaveRow m={saveR} />
           </form>
         </Card>
+        <ManualPaymentCard />
       </div>
     </>
+  );
+}
+
+interface ManualPaymentForm {
+  enabled: boolean; upiId: string; payeeName: string; bankName: string; accountName: string; accountNumber: string; ifsc: string; instructions: string;
+}
+const MP_KEYS: (keyof ManualPaymentForm)[] = ['enabled', 'upiId', 'payeeName', 'bankName', 'accountName', 'accountNumber', 'ifsc', 'instructions'];
+
+/** Where members send manual UPI / bank payments (shown at checkout next to Razorpay). */
+function ManualPaymentCard() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-manual-payment'], queryFn: () => api.get<Partial<ManualPaymentForm> & { qrUrl: string | null }>('/admin/settings/manual-payment') });
+  const [f, setF] = useState<ManualPaymentForm | null>(null);
+  const [qrErr, setQrErr] = useState('');
+  useEffect(() => {
+    if (q.data) setF({ enabled: q.data.enabled ?? true, ...Object.fromEntries(MP_KEYS.filter((k) => k !== 'enabled').map((k) => [k, (q.data as Record<string, unknown>)[k] ?? ''])) } as ManualPaymentForm);
+  }, [q.data]);
+  const save = useMutation({
+    mutationFn: () => api.put('/admin/settings/manualPayment', Object.fromEntries(MP_KEYS.map((k) => [k, typeof f![k] === 'string' ? (f![k] as string).trim() : f![k]]))),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-manual-payment'] }),
+  });
+  const upload = useMutation({
+    mutationFn: async (file: File) => api.post('/admin/settings/manual-payment/qr', { image: await imageToDataUrl(file, 1200, 0.92) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-manual-payment'] }),
+    onError: (e: Error) => setQrErr(e.message),
+  });
+  if (!f) return <Card title="Manual payment (UPI / bank transfer)"><Spinner /></Card>;
+  const set = (k: keyof ManualPaymentForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setF({ ...f, [k]: k === 'ifsc' ? e.target.value.toUpperCase() : e.target.value });
+
+  return (
+    <Card title="Manual payment (UPI / bank transfer)" className="lg:col-span-2">
+      <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4">
+        <Toggle checked={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label="Allow members to pay manually and upload a payment screenshot" />
+        <p className="text-xs text-slate-500">Members see these details at checkout (alongside Razorpay, or alone if Razorpay is unavailable). Screenshots arrive in Payments → Screenshot submitted.</p>
+        <div className="grid gap-6 md:grid-cols-[1fr_auto]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="UPI ID"><Input value={f.upiId} onChange={set('upiId')} placeholder="business@okaxis" /></Field>
+            <Field label="Payee name (shown in UPI app)"><Input value={f.payeeName} onChange={set('payeeName')} /></Field>
+            <Field label="Account holder name"><Input value={f.accountName} onChange={set('accountName')} /></Field>
+            <Field label="Account number"><Input value={f.accountNumber} onChange={set('accountNumber')} inputMode="numeric" /></Field>
+            <Field label="IFSC"><Input value={f.ifsc} onChange={set('ifsc')} placeholder="SBIN0001234" /></Field>
+            <Field label="Bank name"><Input value={f.bankName} onChange={set('bankName')} /></Field>
+            <div className="sm:col-span-2">
+              <Field label="Instructions for members (optional)"><Textarea rows={2} value={f.instructions} onChange={set('instructions')} placeholder="Pay the exact amount and upload the screenshot showing the UTR." /></Field>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-sm font-medium text-slate-700">Payment QR code</p>
+            {q.data?.qrUrl
+              ? <img src={q.data.qrUrl} alt="Payment QR" className="h-44 w-44 rounded-lg border border-slate-200 object-contain" />
+              : <div className="flex h-44 w-44 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-xs text-slate-400">No QR uploaded</div>}
+            <label className="mt-2 inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              {upload.isPending ? 'Uploading…' : q.data?.qrUrl ? 'Replace QR' : 'Upload QR'}
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={upload.isPending}
+                onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; setQrErr(''); if (file) upload.mutate(file); }} />
+            </label>
+            {qrErr && <p className="mt-1 max-w-44 text-xs text-rose-600">{qrErr}</p>}
+          </div>
+        </div>
+        <SaveRow m={save as unknown as ReturnType<typeof useSave>} />
+      </form>
+    </Card>
   );
 }
 

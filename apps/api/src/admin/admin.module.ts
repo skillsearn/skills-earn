@@ -19,6 +19,7 @@ import type { Response } from 'express';
 import { AuthCache, AuthUser, ClientIp, CurrentUser, Roles } from '../common/auth';
 import { AuditService } from '../common/audit.service';
 import { searchUserIds, SupabaseService, toHttpError, unwrap } from '../common/supabase.service';
+import { UploadsService } from '../common/uploads.service';
 import { pageRange, toCamel, toCsv } from '../common/util';
 import { LEDGER_COLUMNS } from '../wallet/wallet.module';
 
@@ -32,23 +33,31 @@ const today = () => new Date().toISOString().slice(0, 10);
 const EXPORTS: Record<string, { table: string; select: string; date: string; columns: { key: string; label: string }[]; flatten: (r: any) => any }> = {
   users: {
     table: 'profiles',
-    select: 'user_code, full_name, email, mobile, referral_code, status, role, created_at, package_activated_at, sponsor:sponsor_id(user_code), active_package:packages!profiles_active_package_id_fkey(name)',
+    select: 'user_code, full_name, email, mobile, referral_code, status, role, created_at, package_activated_at, registration_ip, payout_details, sponsor:sponsor_id(user_code), active_package:packages!profiles_active_package_id_fkey(name)',
     date: 'created_at',
     columns: [
       { key: 'user_code', label: 'User ID' }, { key: 'full_name', label: 'Name' }, { key: 'email', label: 'Email' },
       { key: 'mobile', label: 'Mobile' }, { key: 'referral_code', label: 'Referral Code' }, { key: 'sponsor', label: 'Direct Referrer' },
       { key: 'package', label: 'Package' }, { key: 'status', label: 'Status' }, { key: 'created_at', label: 'Joined' },
+      { key: 'package_activated_at', label: 'Package Activated' }, { key: 'upi_id', label: 'UPI ID' },
+      { key: 'account_name', label: 'Account Holder' }, { key: 'account_number', label: 'Account Number' },
+      { key: 'ifsc', label: 'IFSC' }, { key: 'bank_name', label: 'Bank Name' }, { key: 'registration_ip', label: 'Registration IP' },
     ],
-    flatten: (r) => ({ ...r, sponsor: r.sponsor?.user_code, package: r.active_package?.name }),
+    flatten: (r) => ({
+      ...r, sponsor: r.sponsor?.user_code, package: r.active_package?.name,
+      upi_id: r.payout_details?.upiId, account_name: r.payout_details?.accountName, account_number: r.payout_details?.accountNumber,
+      ifsc: r.payout_details?.ifsc, bank_name: r.payout_details?.bankName,
+    }),
   },
   purchases: {
     table: 'purchases',
-    select: 'id, type, amount, status, provider, provider_payment_id, paid_at, created_at, commission_status, user:profiles!purchases_user_id_fkey(user_code, full_name), package:packages!purchases_package_id_fkey(name)',
+    select: 'id, type, amount, status, provider, provider_payment_id, manual_utr, manual_submitted_at, paid_at, created_at, commission_status, user:profiles!purchases_user_id_fkey(user_code, full_name), package:packages!purchases_package_id_fkey(name)',
     date: 'created_at',
     columns: [
       { key: 'id', label: 'Purchase ID' }, { key: 'user_code', label: 'User ID' }, { key: 'name', label: 'Name' },
       { key: 'package', label: 'Package' }, { key: 'type', label: 'Type' }, { key: 'amount', label: 'Amount' },
       { key: 'status', label: 'Status' }, { key: 'provider', label: 'Provider' }, { key: 'provider_payment_id', label: 'Payment Ref' },
+      { key: 'manual_utr', label: 'Manual UTR' }, { key: 'manual_submitted_at', label: 'Screenshot Submitted' },
       { key: 'commission_status', label: 'Commission' }, { key: 'paid_at', label: 'Paid At' },
     ],
     flatten: (r) => ({ ...r, user_code: r.user?.user_code, name: r.user?.full_name, package: r.package?.name }),
@@ -98,6 +107,7 @@ export class AdminService {
     private readonly supabase: SupabaseService,
     private readonly audit: AuditService,
     private readonly cache: AuthCache,
+    private readonly uploads: UploadsService,
   ) {}
 
   dashboard() {
@@ -118,7 +128,7 @@ export class AdminService {
     let query = this.supabase.db
       .from('profiles')
       .select(
-        'id, user_code, full_name, email, mobile, referral_code, role, status, created_at, ' +
+        'id, user_code, full_name, email, mobile, referral_code, role, status, created_at, payout_details, ' +
           'active_package:packages!profiles_active_package_id_fkey(name, level), sponsor:sponsor_id(user_code, full_name)',
         { count: 'exact' },
       )
@@ -144,16 +154,28 @@ export class AdminService {
         .maybeSingle(),
     );
     if (!profile) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: 'User not found' });
-    const [wallet, team, purchases, withdrawals] = await Promise.all([
+    const [wallet, team, purchases, withdrawals, authUser] = await Promise.all([
       this.supabase.rpc('wallet_summary', { p_user: id }),
       this.supabase.rpc('team_summary', { p_user: id }),
       this.supabase.db.from('purchases')
         .select('*, package:packages!purchases_package_id_fkey(name), from_package:packages!purchases_from_package_id_fkey(name)')
         .eq('user_id', id).order('created_at', { ascending: false }).then(unwrap),
       this.supabase.db.from('withdrawals').select('*').eq('user_id', id).order('requested_at', { ascending: false }).limit(20).then(unwrap),
+      this.supabase.db.auth.admin.getUserById(id).then((r) => r.data?.user ?? null, () => null),
     ]);
-    const { ancestors: _a, ...rest } = profile as Record<string, unknown>;
-    return { profile: toCamel(rest), wallet, team, purchases: toCamel(purchases), withdrawals: toCamel(withdrawals) };
+    const { ancestors: _a, ...rest } = profile as Record<string, unknown> & { payout_details?: Record<string, string> | null };
+    const withProof = await Promise.all(
+      (purchases as { manual_proof_path: string | null }[]).map(async (p) => ({ ...p, proof_url: await this.uploads.signedUrl(p.manual_proof_path) })),
+    );
+    return {
+      profile: toCamel({
+        ...rest,
+        upi_qr_url: await this.uploads.signedUrl(rest.payout_details?.upiQrPath),
+        last_sign_in_at: authUser?.last_sign_in_at ?? null,
+        email_confirmed_at: authUser?.email_confirmed_at ?? null,
+      }),
+      wallet, team, purchases: toCamel(withProof), withdrawals: toCamel(withdrawals),
+    };
   }
 
   async setStatus(id: string, dto: UserStatusDto, actor: AuthUser, ip: string | null) {

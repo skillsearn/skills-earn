@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { usePaged } from '../../lib/hooks';
 import { formatDate, formatDateTime } from '../../lib/format';
+import { imageToDataUrl } from '../../lib/image';
 import type { Notification, PayoutDetails } from '../../lib/types';
 
 export function Notifications() {
@@ -46,10 +47,16 @@ export function Profile() {
 
   const saveProfile = useMutation({
     mutationFn: () => {
-      const clean = Object.fromEntries(Object.entries(payout).filter(([, v]) => v));
+      const clean = Object.fromEntries(Object.entries(payout).filter(([k, v]) => v && k !== 'upiQrPath'));
       return api.patch('/me/profile', { fullName, payoutDetails: clean });
     },
     onSuccess: () => refresh(),
+  });
+  const [qrErr, setQrErr] = useState('');
+  const uploadQr = useMutation({
+    mutationFn: async (file: File) => api.post('/me/payout-qr', { image: await imageToDataUrl(file, 1200, 0.9) }),
+    onSuccess: () => refresh(),
+    onError: (e: Error) => setQrErr(e.message),
   });
   const changePw = useMutation({
     mutationFn: () => api.post('/auth/change-password', { currentPassword: pw.currentPassword, newPassword: pw.newPassword }),
@@ -109,6 +116,22 @@ export function Profile() {
             </div>
             <Button type="submit" loading={saveProfile.isPending}>Save changes</Button>
           </form>
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <p className="text-sm font-medium text-slate-700">UPI QR code</p>
+            <p className="mb-3 text-xs text-slate-500">Upload the QR from your UPI app so withdrawals can be paid by scanning it.</p>
+            <div className="flex items-center gap-4">
+              {me.upiQrUrl
+                ? <a href={me.upiQrUrl} target="_blank" rel="noreferrer"><img src={me.upiQrUrl} alt="Your UPI QR" className="h-28 w-28 rounded-lg border border-slate-200 object-contain" /></a>
+                : <div className="flex h-28 w-28 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-xs text-slate-400">No QR</div>}
+              <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                {uploadQr.isPending ? 'Uploading…' : me.upiQrUrl ? 'Replace QR' : 'Upload QR'}
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploadQr.isPending}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; setQrErr(''); if (f) uploadQr.mutate(f); }} />
+              </label>
+            </div>
+            {uploadQr.isSuccess && <p className="mt-2 text-sm text-emerald-600">QR code saved.</p>}
+            {qrErr && <div className="mt-2"><Alert>{qrErr}</Alert></div>}
+          </div>
         </Card>
         <Card title="Change password">
           <form

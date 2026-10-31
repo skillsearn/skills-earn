@@ -33,6 +33,7 @@ import { AllowSuspended, AuthCache, AuthedRequest, AuthUser, ClientIp, CurrentUs
 import { AuditService } from '../common/audit.service';
 import { Env } from '../common/env';
 import { SupabaseService, toHttpError, unwrap } from '../common/supabase.service';
+import { UploadsService } from '../common/uploads.service';
 import { normalizeMobile, toCamel } from '../common/util';
 import { Req } from '@nestjs/common';
 
@@ -68,6 +69,10 @@ export class PayoutDetailsDto {
   @IsOptional() @IsString() @MaxLength(80) bankName?: string;
 }
 
+export class PayoutQrDto {
+  @IsString() @MaxLength(8_000_000) image: string;
+}
+
 export class UpdateProfileDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(80) fullName?: string;
   @IsOptional() @ValidateNested() @Type(() => PayoutDetailsDto) payoutDetails?: PayoutDetailsDto;
@@ -86,6 +91,7 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly cache: AuthCache,
     private readonly config: ConfigService<Env, true>,
+    private readonly uploads: UploadsService,
   ) {}
 
   referralLink(code: string) {
@@ -211,8 +217,9 @@ export class AuthService {
         )
         .eq('id', userId)
         .single(),
-    ) as unknown as Record<string, unknown> & { referral_code: string };
-    return { ...toCamel<Record<string, unknown>>(p), referralLink: this.referralLink(p.referral_code) };
+    ) as unknown as Record<string, unknown> & { referral_code: string; payout_details: Record<string, string> | null };
+    const upiQrUrl = await this.uploads.signedUrl(p.payout_details?.upiQrPath);
+    return { ...toCamel<Record<string, unknown>>(p), upiQrUrl, referralLink: this.referralLink(p.referral_code) };
   }
 
   async changePassword(user: AuthUser, dto: ChangePasswordDto, ip: string | null) {
@@ -233,11 +240,25 @@ export class AuthService {
   async updateProfile(user: AuthUser, dto: UpdateProfileDto) {
     const patch: Record<string, unknown> = {};
     if (dto.fullName) patch.full_name = dto.fullName.trim();
-    if (dto.payoutDetails) patch.payout_details = dto.payoutDetails;
+    if (dto.payoutDetails) {
+      // Keep the uploaded QR (not part of the editable form).
+      const { data } = await this.supabase.db.from('profiles').select('payout_details').eq('id', user.id).single();
+      const qr = (data?.payout_details as Record<string, string> | null)?.upiQrPath;
+      patch.payout_details = { ...dto.payoutDetails, ...(qr ? { upiQrPath: qr } : {}) };
+    }
     if (Object.keys(patch).length) {
       unwrap(await this.supabase.db.from('profiles').update(patch).eq('id', user.id));
       this.cache.invalidateUser(user.id);
     }
+    return this.me(user.id);
+  }
+
+  async uploadPayoutQr(user: AuthUser, image: string) {
+    const path = await this.uploads.uploadImage(`upi-qr/${user.id}`, image);
+    const { data } = await this.supabase.db.from('profiles').select('payout_details').eq('id', user.id).single();
+    const current = (data?.payout_details as Record<string, string> | null) ?? {};
+    unwrap(await this.supabase.db.from('profiles').update({ payout_details: { ...current, upiQrPath: path } }).eq('id', user.id));
+    this.cache.invalidateUser(user.id);
     return this.me(user.id);
   }
 }
@@ -287,6 +308,13 @@ export class AuthController {
   @Post('auth/logout')
   logout(@Req() req: AuthedRequest) {
     return this.auth.logout(req.token);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('me/payout-qr')
+  uploadPayoutQr(@CurrentUser() user: AuthUser, @Body() dto: PayoutQrDto) {
+    return this.auth.uploadPayoutQr(user, dto.image);
   }
 
   @Patch('me/profile')

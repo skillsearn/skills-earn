@@ -13,7 +13,7 @@ interface DashboardData {
   team: TeamSummary;
   withdrawal: WithdrawalSchedule;
   notifications: Notification[];
-  pendingPurchase: { id: string; type: string; amount: string; package: { name: string } } | null;
+  pendingPurchase: { id: string; type: string; amount: string; manualSubmittedAt: string | null; package: { name: string } } | null;
 }
 
 export function ReferralCard({ link, code }: { link: string; code: string }) {
@@ -57,10 +57,17 @@ export default function Dashboard() {
 
       {!pkg && data.pendingPurchase && (
         <div className="mb-6">
-          <Alert tone="amber">
-            Your {data.pendingPurchase.package.name} package is awaiting payment of {formatINR(data.pendingPurchase.amount)}.{' '}
-            <Link to={`/app/checkout/${data.pendingPurchase.id}`} className="font-semibold underline">Complete payment →</Link>
-          </Alert>
+          {data.pendingPurchase.manualSubmittedAt ? (
+            <Alert tone="sky">
+              Your payment screenshot for the {data.pendingPurchase.package.name} package ({formatINR(data.pendingPurchase.amount)}) is under review. The package activates once the admin verifies it.{' '}
+              <Link to={`/app/checkout/${data.pendingPurchase.id}`} className="font-semibold underline">View →</Link>
+            </Alert>
+          ) : (
+            <Alert tone="amber">
+              Your {data.pendingPurchase.package.name} package is awaiting payment of {formatINR(data.pendingPurchase.amount)}.{' '}
+              <Link to={`/app/checkout/${data.pendingPurchase.id}`} className="font-semibold underline">Complete payment →</Link>
+            </Alert>
+          )}
         </div>
       )}
       {!pkg && !data.pendingPurchase && (

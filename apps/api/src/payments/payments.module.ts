@@ -18,7 +18,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SkipThrottle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { randomUUID } from 'crypto';
 import type { Request } from 'express';
@@ -26,6 +26,7 @@ import { AuthCache, AuthUser, ClientIp, CurrentUser, Public, Roles } from '../co
 import { AuditService } from '../common/audit.service';
 import { Env } from '../common/env';
 import { searchUserIds, SupabaseService, toHttpError, unwrap } from '../common/supabase.service';
+import { UploadsService } from '../common/uploads.service';
 import { pageRange, round2, toCamel } from '../common/util';
 import { SettingsModule, SettingsService } from '../settings/settings.module';
 import { PayoutsService } from '../withdrawals/payouts.service';
@@ -53,6 +54,12 @@ export class ManualVerifyDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
 
+export class ManualProofDto {
+  @IsString() @MaxLength(8_000_000) image: string;
+  @IsString() @MinLength(6) @MaxLength(40) utr: string;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
 export class FailDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
@@ -67,7 +74,12 @@ interface PurchaseRow {
   status: string;
   provider: string | null;
   provider_order_id: string | null;
+  manual_proof_path: string | null;
+  manual_utr: string | null;
+  manual_submitted_at: string | null;
 }
+
+const formatAmount = (v: string | number) => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const PURCHASE_SELECT =
   '*, package:packages!purchases_package_id_fkey(name, level), from_package:packages!purchases_from_package_id_fkey(name, level)';
@@ -84,6 +96,7 @@ export class PaymentsService {
     private readonly audit: AuditService,
     private readonly cache: AuthCache,
     private readonly config: ConfigService<Env, true>,
+    private readonly uploads: UploadsService,
   ) {}
 
   private get provider() {
@@ -118,7 +131,12 @@ export class PaymentsService {
     }
     const pkg = unwrap(await this.supabase.db.from('packages').select('name').eq('id', p.package_id).single());
     const amount = Number(p.amount);
-    const base = { purchaseId: p.id, type: p.type, packageName: pkg.name, amount };
+    const manual = await this.settings.manualPayment();
+    const base = {
+      purchaseId: p.id, type: p.type, packageName: pkg.name, amount, status: p.status,
+      manual: manual.enabled ? manual : null,
+      proof: p.manual_proof_path ? { utr: p.manual_utr, submittedAt: p.manual_submitted_at } : null,
+    };
 
     if (this.provider === 'mock') {
       if (p.provider !== 'mock') await this.supabase.db.from('purchases').update({ provider: 'mock' }).eq('id', p.id);
@@ -127,10 +145,17 @@ export class PaymentsService {
 
     let orderId = p.provider_order_id;
     if (!orderId) {
-      const order = await this.razorpay.createOrder(amount, p.id, { purchase_id: p.id, user_code: user.userCode });
-      orderId = order.id;
-      unwrap(await this.supabase.db.from('purchases').update({ provider: 'razorpay', provider_order_id: orderId }).eq('id', p.id));
-      await this.logEvent(p.id, 'razorpay', 'order.created', order);
+      try {
+        const order = await this.razorpay.createOrder(amount, p.id, { purchase_id: p.id, user_code: user.userCode });
+        orderId = order.id;
+        unwrap(await this.supabase.db.from('purchases').update({ provider: 'razorpay', provider_order_id: orderId }).eq('id', p.id));
+        await this.logEvent(p.id, 'razorpay', 'order.created', order);
+      } catch (err) {
+        // Gateway down / not configured: members can still pay manually.
+        if (!base.manual) throw err;
+        this.logger.warn(`Razorpay order failed for ${p.id}: ${(err as Error).message}`);
+        return { ...base, provider: 'manual' as const };
+      }
     }
     const prof = unwrap(await this.supabase.db.from('profiles').select('full_name, email, mobile').eq('id', user.id).single());
     return {
@@ -303,6 +328,45 @@ export class PaymentsService {
     return this.activate(p.id, 'mock', `mock_${randomUUID()}`, null);
   }
 
+  /** Member paid outside the gateway (UPI / bank transfer) and uploads the screenshot + UTR for admin review. */
+  async submitManualProof(user: AuthUser, id: string, dto: ManualProofDto) {
+    const manual = await this.settings.manualPayment();
+    if (!manual.enabled) throw new BadRequestException({ code: 'MANUAL_DISABLED', message: 'Manual payment is not available right now' });
+    const p = await this.purchaseFor(user, id);
+    if (!['pending', 'failed'].includes(p.status)) {
+      throw new BadRequestException({ code: 'PURCHASE_NOT_PAYABLE', message: `Purchase is ${p.status}` });
+    }
+    const utr = dto.utr.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6,40}$/.test(utr)) throw new BadRequestException({ code: 'INVALID_UTR', message: 'Enter the UTR / transaction ID shown in your payment app' });
+    const { data: reused } = await this.supabase.db.from('purchases').select('id, user_id')
+      .eq('manual_utr', utr).neq('id', p.id).in('status', ['pending', 'paid']).limit(1);
+    if (reused?.length) {
+      await this.supabase.db.from('fraud_alerts').insert({
+        type: 'manual_utr_reused', severity: 'high', user_id: user.id, purchase_id: p.id,
+        details: { utr, other_purchase: reused[0].id, other_user: reused[0].user_id },
+      });
+      throw new BadRequestException({ code: 'UTR_ALREADY_USED', message: 'This UTR has already been submitted for another payment' });
+    }
+
+    const path = await this.uploads.uploadImage(`payment-proofs/${user.id}`, dto.image);
+    const now = new Date().toISOString();
+    unwrap(
+      await this.supabase.db.from('purchases').update({
+        status: 'pending', manual_proof_path: path, manual_utr: utr, manual_note: dto.note?.trim() || null, manual_submitted_at: now,
+      }).eq('id', p.id).in('status', ['pending', 'failed']),
+    );
+    await this.logEvent(p.id, 'manual', 'proof.submitted', { utr, path, note: dto.note ?? null, previous: p.manual_proof_path });
+
+    const { data: admins } = await this.supabase.db.from('profiles').select('id').eq('role', 'admin');
+    if (admins?.length) {
+      await this.supabase.db.from('notifications').insert(admins.map((a: { id: string }) => ({
+        user_id: a.id, type: 'manual_payment', title: 'Manual payment to verify',
+        body: `${user.userCode} uploaded a payment screenshot for ${formatAmount(p.amount)} (UTR ${utr}).`, link: '/admin/payments',
+      })));
+    }
+    return { ok: true, purchaseId: p.id, submittedAt: now, utr };
+  }
+
   async myPurchases(user: AuthUser) {
     const rows = unwrap(
       await this.supabase.db.from('purchases').select(PURCHASE_SELECT).eq('user_id', user.id)
@@ -312,7 +376,7 @@ export class PaymentsService {
   }
 
   // ───────── admin ─────────
-  async adminList(q: { status?: string; type?: string; search?: string; page?: string; pageSize?: string }) {
+  async adminList(q: { status?: string; type?: string; proof?: string; search?: string; page?: string; pageSize?: string }) {
     const { from, to, page, pageSize } = pageRange(q.page, q.pageSize);
     let query = this.supabase.db
       .from('purchases')
@@ -321,6 +385,7 @@ export class PaymentsService {
       .range(from, to);
     if (q.status) query = query.eq('status', q.status);
     if (q.type) query = query.eq('type', q.type);
+    if (q.proof === 'submitted') query = query.not('manual_proof_path', 'is', null);
     if (q.search) query = query.in('user_id', await searchUserIds(this.supabase, q.search));
     const { data, count, error } = await query;
     if (error) throw toHttpError(error);
@@ -338,7 +403,8 @@ export class PaymentsService {
         .eq('purchase_id', id).order('level').then(unwrap),
     ]);
     if (!purchase) throw new NotFoundException({ code: 'PURCHASE_NOT_FOUND', message: 'Purchase not found' });
-    return toCamel({ purchase, events, commissions });
+    const proofUrl = await this.uploads.signedUrl((purchase as PurchaseRow).manual_proof_path);
+    return toCamel({ purchase: { ...purchase, proof_url: proofUrl }, events, commissions });
   }
 
   async manualVerify(id: string, dto: ManualVerifyDto, actor: AuthUser, ip: string | null) {
@@ -359,6 +425,13 @@ export class PaymentsService {
       await this.supabase.db.from('purchases').update({ status: 'failed', notes: dto.note ?? before.notes }).eq('id', id).select().single(),
     );
     await this.audit.log({ actorId: actor.id, action: 'payment.mark_failed', entity: 'purchase', entityId: id, before, after, ip });
+    if (before.manual_proof_path) {
+      await this.supabase.db.from('notifications').insert({
+        user_id: before.user_id, type: 'payment', title: 'Payment could not be verified',
+        body: dto.note ? `Reason: ${dto.note}. You can upload a new screenshot.` : 'Your payment screenshot could not be verified. Please upload a new one or contact support.',
+        link: `/app/checkout/${id}`,
+      });
+    }
     return toCamel(after);
   }
 }
@@ -400,6 +473,13 @@ export class PaymentsController {
   @Post('payments/webhook/razorpay')
   webhook(@Req() req: RawBodyRequest<Request>, @Headers('x-razorpay-signature') sig: string, @Body() body: unknown) {
     return this.payments.webhook(req.rawBody, sig, body);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('payments/:id/manual-proof')
+  manualProof(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ManualProofDto) {
+    return this.payments.submitManualProof(u, id, dto);
   }
 
   @Get('me/purchases')

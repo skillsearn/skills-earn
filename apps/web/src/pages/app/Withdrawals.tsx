@@ -47,7 +47,8 @@ export default function Withdrawals() {
 
   useEffect(() => {
     if (me?.payoutDetails) {
-      setDetails(me.payoutDetails);
+      const { upiQrPath: _qr, ...editable } = me.payoutDetails;
+      setDetails(editable);
       if (!me.payoutDetails.upiId && me.payoutDetails.accountNumber) setMethod('bank');
     }
   }, [me?.payoutDetails]);

@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Get, Injectable, Module, Param, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Injectable, Module, Param, Post, Put } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, Max, Min, validateSync } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, validateSync } from 'class-validator';
 import { AuthUser, ClientIp, CurrentUser, Public, Roles } from '../common/auth';
 import { AuditService } from '../common/audit.service';
 import { SupabaseService, unwrap } from '../common/supabase.service';
+import { UploadsService } from '../common/uploads.service';
 import { isWindowOpen, nextWindowStart, WithdrawalSettings } from '../common/util';
 
 export class WithdrawalSettingsDto implements WithdrawalSettings {
@@ -33,11 +34,32 @@ export class RegistrationSettingsDto {
   @IsBoolean() referralRequired: boolean;
 }
 
+/** Where members send manual (non-gateway) payments. The QR image is uploaded separately (qrPath). */
+export class ManualPaymentSettingsDto {
+  @IsBoolean() enabled: boolean;
+  @IsOptional() @IsString() @Matches(/^$|^[\w.\-]{2,}@[a-zA-Z]{2,}$/, { message: 'Invalid UPI ID' }) upiId?: string;
+  @IsOptional() @IsString() @MaxLength(80) payeeName?: string;
+  @IsOptional() @IsString() @MaxLength(80) bankName?: string;
+  @IsOptional() @IsString() @MaxLength(80) accountName?: string;
+  @IsOptional() @IsString() @Matches(/^$|^\d{6,18}$/, { message: 'Invalid account number' }) accountNumber?: string;
+  @IsOptional() @IsString() @Matches(/^$|^[A-Z]{4}0[A-Z0-9]{6}$/, { message: 'Invalid IFSC' }) ifsc?: string;
+  @IsOptional() @IsString() @MaxLength(1000) instructions?: string;
+}
+
+export class QrUploadDto {
+  @IsString() @MaxLength(8_000_000) image: string;
+}
+
+export interface ManualPaymentSettings extends ManualPaymentSettingsDto {
+  qrPath?: string;
+}
+
 const SCHEMAS = {
   withdrawal: WithdrawalSettingsDto,
   upgrade: UpgradeSettingsDto,
   commission: CommissionSettingsDto,
   registration: RegistrationSettingsDto,
+  manualPayment: ManualPaymentSettingsDto,
 } as const;
 export type SettingKey = keyof typeof SCHEMAS;
 
@@ -46,6 +68,7 @@ export interface AllSettings {
   upgrade: UpgradeSettingsDto;
   commission: CommissionSettingsDto;
   registration: RegistrationSettingsDto;
+  manualPayment: ManualPaymentSettings;
 }
 
 @Injectable()
@@ -53,6 +76,7 @@ export class SettingsService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly audit: AuditService,
+    private readonly uploads: UploadsService,
   ) {}
 
   async all(): Promise<AllSettings> {
@@ -77,7 +101,9 @@ export class SettingsService {
       });
     }
     const before = await this.get(key as SettingKey);
-    const clean = { ...dto };
+    const clean: Record<string, unknown> = { ...dto };
+    // The QR image path is only changed through uploadManualQr().
+    if (key === 'manualPayment') clean.qrPath = (before as ManualPaymentSettings | null)?.qrPath ?? '';
     unwrap(
       await this.supabase.db
         .from('app_settings')
@@ -86,6 +112,28 @@ export class SettingsService {
     );
     await this.audit.log({ actorId: actor.id, action: `settings.${key}.update`, entity: 'settings', entityId: key, before, after: clean, ip });
     return clean;
+  }
+
+  /** Manual payment details with a signed QR URL (members see this at checkout). */
+  async manualPayment() {
+    const { data } = await this.supabase.db.from('app_settings').select('value').eq('key', 'manualPayment').maybeSingle();
+    const s = (data?.value ?? { enabled: false }) as ManualPaymentSettings;
+    const { qrPath, ...rest } = s;
+    return { ...rest, qrUrl: await this.uploads.signedUrl(qrPath, 6 * 3600) };
+  }
+
+  async uploadManualQr(image: string, actor: AuthUser, ip: string | null) {
+    const { data } = await this.supabase.db.from('app_settings').select('value').eq('key', 'manualPayment').maybeSingle();
+    const current = data?.value as ManualPaymentSettings | undefined;
+    const qrPath = await this.uploads.uploadImage('settings/manual-payment-qr', image);
+    unwrap(
+      await this.supabase.db.from('app_settings').upsert({
+        key: 'manualPayment', value: { enabled: true, ...(current ?? {}), qrPath },
+        updated_at: new Date().toISOString(), updated_by: actor.id,
+      }),
+    );
+    await this.audit.log({ actorId: actor.id, action: 'settings.manualPayment.qr_upload', entity: 'settings', entityId: 'manualPayment', before: { qrPath: current?.qrPath }, after: { qrPath }, ip });
+    return this.manualPayment();
   }
 
   async publicView() {
@@ -117,6 +165,19 @@ export class SettingsController {
   @Get('admin/settings')
   all() {
     return this.settings.all();
+  }
+
+  @Roles('admin')
+  @Get('admin/settings/manual-payment')
+  manualPayment() {
+    return this.settings.manualPayment();
+  }
+
+  @Roles('admin')
+  @HttpCode(200)
+  @Post('admin/settings/manual-payment/qr')
+  uploadQr(@Body() dto: QrUploadDto, @CurrentUser() user: AuthUser, @ClientIp() ip: string | null) {
+    return this.settings.uploadManualQr(dto.image, user, ip);
   }
 
   @Roles('admin')

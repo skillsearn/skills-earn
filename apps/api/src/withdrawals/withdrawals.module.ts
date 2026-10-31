@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
 import { AuthUser, ClientIp, CurrentUser, Roles } from '../common/auth';
 import { searchUserIds, SupabaseService, toHttpError, unwrap } from '../common/supabase.service';
+import { UploadsService } from '../common/uploads.service';
 import { isWindowOpen, nextWindowStart, pageRange, toCamel, withdrawalQuote } from '../common/util';
 import { PayoutDetailsDto } from '../auth/auth.module';
 import { SettingsModule, SettingsService } from '../settings/settings.module';
@@ -32,6 +33,7 @@ export class WithdrawalsService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly settings: SettingsService,
+    private readonly uploads: UploadsService,
   ) {}
 
   async quote(user: AuthUser, amount: number) {
@@ -78,7 +80,9 @@ export class WithdrawalsService {
       p_details: details,
     });
     if (dto.saveDetails) {
-      await this.supabase.db.from('profiles').update({ payout_details: { ...d } }).eq('id', user.id);
+      const { data } = await this.supabase.db.from('profiles').select('payout_details').eq('id', user.id).single();
+      const qr = (data?.payout_details as Record<string, string> | null)?.upiQrPath;
+      await this.supabase.db.from('profiles').update({ payout_details: { ...d, ...(qr ? { upiQrPath: qr } : {}) } }).eq('id', user.id);
     }
     return toCamel(row);
   }
@@ -116,10 +120,10 @@ export class WithdrawalsService {
     const w = unwrap(
       await this.supabase.db
         .from('withdrawals')
-        .select('*, user:profiles!withdrawals_user_id_fkey(id, user_code, full_name, mobile, email, status)')
+        .select('*, user:profiles!withdrawals_user_id_fkey(id, user_code, full_name, mobile, email, status, payout_details)')
         .eq('id', id)
         .maybeSingle(),
-    ) as { user_id: string } | null;
+    ) as { user_id: string; user?: { payout_details?: Record<string, string> | null } } | null;
     if (!w) throw new NotFoundException({ code: 'WITHDRAWAL_NOT_FOUND', message: 'Withdrawal not found' });
     const [events, ledger, wallet] = await Promise.all([
       this.supabase.db.from('withdrawal_events').select('*, actor:profiles!withdrawal_events_actor_id_fkey(user_code, full_name)')
@@ -127,7 +131,8 @@ export class WithdrawalsService {
       this.supabase.db.from('wallet_ledger').select('*').eq('withdrawal_id', id).order('created_at').then(unwrap),
       this.supabase.rpc('wallet_summary', { p_user: w.user_id }),
     ]);
-    return toCamel({ withdrawal: w, events, ledger, wallet });
+    const upiQrUrl = await this.uploads.signedUrl(w.user?.payout_details?.upiQrPath);
+    return toCamel({ withdrawal: w, events, ledger, wallet, upiQrUrl });
   }
 
   async transition(id: string, dto: TransitionDto, actor: AuthUser) {

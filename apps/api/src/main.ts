@@ -13,6 +13,8 @@ async function bootstrap() {
   const config = app.get(ConfigService<Env, true>);
 
   app.set('trust proxy', 1);
+  // Screenshot / QR uploads are sent as base64 JSON (5 MB image ≈ 6.7 MB encoded).
+  app.useBodyParser('json', { limit: '8mb' });
   app.use(helmet());
   app.enableCors({
     origin: config.get('WEB_ORIGIN').split(',').map((s: string) => s.trim()),
