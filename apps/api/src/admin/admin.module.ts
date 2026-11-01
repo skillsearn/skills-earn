@@ -51,16 +51,17 @@ const EXPORTS: Record<string, { table: string; select: string; date: string; col
   },
   purchases: {
     table: 'purchases',
-    select: 'id, type, amount, status, provider, provider_payment_id, manual_utr, manual_submitted_at, paid_at, created_at, commission_status, user:profiles!purchases_user_id_fkey(user_code, full_name), package:packages!purchases_package_id_fkey(name)',
+    select: 'id, type, amount, list_amount, discount_amount, status, provider, provider_payment_id, manual_utr, manual_submitted_at, paid_at, created_at, commission_status, user:profiles!purchases_user_id_fkey(user_code, full_name), package:packages!purchases_package_id_fkey(name)',
     date: 'created_at',
     columns: [
       { key: 'id', label: 'Purchase ID' }, { key: 'user_code', label: 'User ID' }, { key: 'name', label: 'Name' },
-      { key: 'package', label: 'Package' }, { key: 'type', label: 'Type' }, { key: 'amount', label: 'Amount' },
+      { key: 'package', label: 'Package' }, { key: 'type', label: 'Type' }, { key: 'list_amount', label: 'Price' },
+      { key: 'discount_amount', label: 'Discount' }, { key: 'amount', label: 'Amount Paid' },
       { key: 'status', label: 'Status' }, { key: 'provider', label: 'Provider' }, { key: 'provider_payment_id', label: 'Payment Ref' },
       { key: 'manual_utr', label: 'Manual UTR' }, { key: 'manual_submitted_at', label: 'Screenshot Submitted' },
       { key: 'commission_status', label: 'Commission' }, { key: 'paid_at', label: 'Paid At' },
     ],
-    flatten: (r) => ({ ...r, user_code: r.user?.user_code, name: r.user?.full_name, package: r.package?.name }),
+    flatten: (r) => ({ ...r, list_amount: r.list_amount ?? r.amount, user_code: r.user?.user_code, name: r.user?.full_name, package: r.package?.name }),
   },
   commissions: {
     table: 'commissions',

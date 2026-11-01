@@ -31,6 +31,7 @@ import { pageRange, round2, toCamel } from '../common/util';
 import { SettingsModule, SettingsService } from '../settings/settings.module';
 import { PayoutsService } from '../withdrawals/payouts.service';
 import { WithdrawalsModule } from '../withdrawals/withdrawals.module';
+import { DiscountsController, DiscountsService } from './discounts';
 import { RazorpayService } from './razorpay.service';
 
 export class CheckoutDto {
@@ -60,6 +61,10 @@ export class ManualProofDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
 
+export class DiscountDto {
+  @IsOptional() @IsString() @MaxLength(40) code?: string;
+}
+
 export class FailDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
@@ -77,6 +82,9 @@ interface PurchaseRow {
   manual_proof_path: string | null;
   manual_utr: string | null;
   manual_submitted_at: string | null;
+  list_amount: string | null;
+  discount_amount: string;
+  discount_code_id: string | null;
 }
 
 const formatAmount = (v: string | number) => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -132,11 +140,19 @@ export class PaymentsService {
     const pkg = unwrap(await this.supabase.db.from('packages').select('name').eq('id', p.package_id).single());
     const amount = Number(p.amount);
     const manual = await this.settings.manualPayment();
+    let discount: { code: string; amount: number; listAmount: number } | null = null;
+    if (p.discount_code_id) {
+      const { data: dc } = await this.supabase.db.from('discount_codes').select('code').eq('id', p.discount_code_id).maybeSingle();
+      discount = { code: dc?.code ?? '', amount: Number(p.discount_amount), listAmount: Number(p.list_amount ?? p.amount) };
+    }
     const base = {
-      purchaseId: p.id, type: p.type, packageName: pkg.name, amount, status: p.status,
-      manual: manual.enabled ? manual : null,
+      purchaseId: p.id, type: p.type, packageName: pkg.name, amount, status: p.status, discount,
+      manual: manual.enabled && amount > 0 ? manual : null,
       proof: p.manual_proof_path ? { utr: p.manual_utr, submittedAt: p.manual_submitted_at } : null,
     };
+
+    // 100 % discount: nothing to pay, the member activates directly.
+    if (amount === 0) return { ...base, provider: 'free' as const };
 
     if (this.provider === 'mock') {
       if (p.provider !== 'mock') await this.supabase.db.from('purchases').update({ provider: 'mock' }).eq('id', p.id);
@@ -190,6 +206,38 @@ export class PaymentsService {
         .single(),
     ) as PurchaseRow;
     return this.checkoutPayload(p, user);
+  }
+
+  /** Applies (code) or removes (no code) an admin discount code on the member's unpaid purchase. */
+  async applyDiscount(user: AuthUser, id: string, dto: DiscountDto) {
+    const p = await this.purchaseFor(user, id);
+    if (p.provider_order_id && p.provider === 'razorpay') {
+      // Never swap the amount under an order that has already been paid.
+      const order = await this.razorpay.fetchOrder(p.provider_order_id).catch(() => null);
+      if (order && (order.status === 'paid' || order.amount_paid > 0)) {
+        throw new BadRequestException({ code: 'PAYMENT_IN_PROGRESS', message: 'A payment for this order has already been received' });
+      }
+    }
+    const code = dto.code?.trim() || null;
+    const result = await this.supabase.rpc<Record<string, unknown>>('apply_discount', { p_purchase_id: p.id, p_user_id: user.id, p_code: code });
+    await this.logEvent(p.id, 'discount', code ? 'discount.applied' : 'discount.removed', { ...result, previousOrder: p.provider_order_id });
+    return this.checkoutPayload(await this.purchaseFor(user, id), user);
+  }
+
+  /** Activates a purchase whose discount brought the amount to ₹0. */
+  async activateFree(user: AuthUser, id: string) {
+    const p = await this.purchaseFor(user, id);
+    if (Number(p.amount) !== 0 || !p.discount_code_id) {
+      throw new BadRequestException({ code: 'NOT_FREE', message: 'This purchase has an amount to pay' });
+    }
+    const dc = unwrap(await this.supabase.db.from('discount_codes').select('*').eq('id', p.discount_code_id).single());
+    const { count } = await this.supabase.db.from('purchases').select('id', { count: 'exact', head: true })
+      .eq('discount_code_id', dc.id).eq('status', 'paid');
+    if (!dc.is_active || (dc.expires_at && new Date(dc.expires_at) <= new Date()) || (dc.max_uses && (count ?? 0) >= dc.max_uses)) {
+      throw new BadRequestException({ code: 'INVALID_DISCOUNT', message: 'This discount code is no longer valid. Remove it to pay normally.' });
+    }
+    await this.logEvent(p.id, 'discount', 'payment.free_activation', { code: dc.code, discount: p.discount_amount });
+    return this.activate(p.id, 'discount', `discount_${p.id}`, null);
   }
 
   async upgradeOptions(user: AuthUser) {
@@ -445,6 +493,19 @@ export class PaymentsController {
     return this.payments.checkout(u, dto);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('payments/:id/discount')
+  discount(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DiscountDto) {
+    return this.payments.applyDiscount(u, id, dto);
+  }
+
+  @HttpCode(200)
+  @Post('payments/:id/activate-free')
+  activateFree(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.payments.activateFree(u, id);
+  }
+
   @Get('payments/upgrade-options')
   upgradeOptions(@CurrentUser() u: AuthUser) {
     return this.payments.upgradeOptions(u);
@@ -516,7 +577,7 @@ export class PaymentsController {
 
 @Module({
   imports: [SettingsModule, WithdrawalsModule],
-  providers: [PaymentsService, RazorpayService],
-  controllers: [PaymentsController],
+  providers: [PaymentsService, RazorpayService, DiscountsService],
+  controllers: [PaymentsController, DiscountsController],
 })
 export class PaymentsModule {}

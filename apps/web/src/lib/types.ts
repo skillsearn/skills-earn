@@ -111,6 +111,9 @@ export interface Purchase {
   type: 'new' | 'upgrade';
   amount: string;
   commissionBase: string;
+  listAmount?: string | null;
+  discountAmount?: string;
+  discountCodeId?: string | null;
   status: 'pending' | 'paid' | 'failed' | 'cancelled';
   provider: string | null;
   providerPaymentId: string | null;
@@ -190,8 +193,9 @@ export interface CheckoutPayload {
   type: 'new' | 'upgrade';
   packageName: string;
   amount: number;
-  provider: 'razorpay' | 'mock' | 'manual';
+  provider: 'razorpay' | 'mock' | 'manual' | 'free';
   status: string;
+  discount: { code: string; amount: number; listAmount: number } | null;
   manual: ManualPaymentInfo | null;
   proof: { utr: string | null; submittedAt: string | null } | null;
   keyId?: string;
@@ -250,4 +254,19 @@ export interface ManualPaymentInfo {
   ifsc?: string;
   instructions?: string;
   qrUrl: string | null;
+}
+
+export interface DiscountCode {
+  id: string;
+  code: string;
+  discountType: 'percent' | 'flat';
+  discountValue: number;
+  maxUses: number | null;
+  expiresAt: string | null;
+  isActive: boolean;
+  note: string | null;
+  createdAt: string;
+  uses: number;
+  discount: number;
+  revenue: number;
 }

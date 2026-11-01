@@ -85,6 +85,10 @@ export class RazorpayService {
     });
   }
 
+  fetchOrder(orderId: string) {
+    return this.call<RazorpayOrder & { amount_paid: number }>('GET', `/orders/${encodeURIComponent(orderId)}`);
+  }
+
   fetchPayment(paymentId: string) {
     return this.call<RazorpayPayment>('GET', `/payments/${encodeURIComponent(paymentId)}`);
   }

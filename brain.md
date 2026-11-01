@@ -100,6 +100,14 @@ counsel before launch.
 * Files are in the **private** Supabase Storage bucket `uploads` (5 MB, png/jpeg/webp), written by the API with the service role and shown only through signed URLs. Members' UPI QR is `payout_details.upiQrPath`; it is preserved when payout details are edited.
 * The API JSON body limit is 8 MB for base64 uploads; the browser downsizes images first.
 
+## 7c. Discount codes (0008)
+
+* Admin-only (Admin → Discount Codes): % or flat ₹, optional max uses (counted on **paid** purchases) and expiry, on/off. Every change is audit-logged.
+* Member applies the code on the checkout page (`apply_discount` RPC). `purchases.amount` becomes what the member actually pays; `list_amount` keeps the price and `discount_amount` the discount. Removing the code restores the price. The old Razorpay order is dropped (a fresh one is created for the new amount); applying is refused if that order was already paid.
+* **Admin income = amount actually paid.** Dashboard "Net income" and every sales figure are net of discounts; "Discounts given" shows the difference.
+* **Commissions follow the money paid:** `commission_base` is scaled by amount / list_amount. 100 % discount → amount ₹0, no commissions, and the package activates without the gateway (`provider = 'discount'`).
+* A remainder between ₹0 and ₹1 is rejected (Razorpay's minimum order is ₹1).
+
 ## 8. Roadmap
 
 Push notifications (FCM) · KYC/PAN capture (TDS u/s 194H)

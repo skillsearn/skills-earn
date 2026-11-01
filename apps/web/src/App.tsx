@@ -19,6 +19,7 @@ const page = <M extends Record<string, ComponentType>>(load: () => Promise<M>, n
   lazy(() => load().then((m) => ({ default: m[name] })));
 const catalog = () => import('./pages/admin/Catalog');
 const dash = () => import('./pages/admin/Dashboard');
+const discounts = () => import('./pages/admin/Discounts');
 const finance = () => import('./pages/admin/Finance');
 const system = () => import('./pages/admin/System');
 const users = () => import('./pages/admin/Users');
@@ -27,6 +28,7 @@ const AdminCourses = page(catalog, 'AdminCourses');
 const AdminPackages = page(catalog, 'AdminPackages');
 const AdminDashboard = page(dash, 'AdminDashboard');
 const AdminReports = page(dash, 'AdminReports');
+const AdminDiscounts = page(discounts, 'AdminDiscounts');
 const AdminCommissions = page(finance, 'AdminCommissions');
 const AdminLedger = page(finance, 'AdminLedger');
 const AdminPayments = page(finance, 'AdminPayments');
@@ -81,6 +83,7 @@ export default function App() {
           <Route path="withdrawals" element={<AdminWithdrawals />} />
           <Route path="ledger" element={<AdminLedger />} />
           <Route path="packages" element={<AdminPackages />} />
+          <Route path="discounts" element={<AdminDiscounts />} />
           <Route path="courses" element={<AdminCourses />} />
           <Route path="courses/:id" element={<AdminCourseEdit />} />
           <Route path="settings" element={<AdminSettings />} />

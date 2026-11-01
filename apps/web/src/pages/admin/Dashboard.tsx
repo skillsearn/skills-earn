@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Banknote, CreditCard, Download, GraduationCap, IndianRupee, Layers, Percent, Share2, UserCheck, Users, Wallet } from 'lucide-react';
+import { AlertTriangle, Banknote, BadgePercent, CreditCard, Download, GraduationCap, IndianRupee, Layers, Percent, Share2, UserCheck, Users, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Card, CopyButton, Field, Input, PageHeader, Spinner, Stat, Table, Tabs } from '../../components/ui';
@@ -15,6 +15,10 @@ interface AdminDashboard {
   packageWiseUsers: { package: string; level: number; users: number }[];
   totalSalesCount: number;
   verifiedPaymentAmount: number;
+  grossSalesAmount: number;
+  discountsGiven: number;
+  discountedSalesCount: number;
+  freeActivations: number;
   newPackageSales: number;
   upgradeSales: number;
   salesToday: number;
@@ -82,7 +86,8 @@ export function AdminDashboard() {
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-slate-500">Sales & payments</h2>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat label="Total package sales" value={d.totalSalesCount} sub={`${formatINR(d.salesToday)} today`} icon={<CreditCard className={ic} />} tone="brand" />
-        <Stat label="Verified payment amount" value={formatINR(d.verifiedPaymentAmount)} sub={`New ${formatINR(d.newPackageSales)} · Upgrades ${formatINR(d.upgradeSales)}`} icon={<IndianRupee className={ic} />} tone="green" />
+        <Stat label="Net income (after discounts)" value={formatINR(d.verifiedPaymentAmount)} sub={`New ${formatINR(d.newPackageSales)} · Upgrades ${formatINR(d.upgradeSales)}`} icon={<IndianRupee className={ic} />} tone="green" />
+        <Stat label="Discounts given" value={formatINR(d.discountsGiven)} sub={`Gross ${formatINR(d.grossSalesAmount)} · ${d.discountedSalesCount} discounted · ${d.freeActivations} free`} icon={<BadgePercent className={ic} />} tone="amber" />
         <Stat label="Pending payments" value={d.pendingPayments} icon={<CreditCard className={ic} />} tone="amber" />
         <Stat label="Wallet liability" value={formatINR(d.walletLiability)} sub="sum of all balances" icon={<Wallet className={ic} />} />
       </div>

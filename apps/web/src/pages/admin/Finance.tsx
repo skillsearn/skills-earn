@@ -57,7 +57,7 @@ export function AdminPayments() {
             { key: 'd', header: 'Created', render: (r) => formatDateTime(r.createdAt) },
             { key: 'u', header: 'User', render: (r) => userCell(r.user) },
             { key: 't', header: 'Package', render: (r) => (r.type === 'upgrade' ? `${r.fromPackage?.name} → ${r.package?.name}` : r.package?.name) },
-            { key: 'a', header: 'Amount', className: 'text-right', render: (r) => formatINR(r.amount) },
+            { key: 'a', header: 'Amount', className: 'text-right', render: (r) => (Number(r.discountAmount ?? 0) > 0 ? <span>{formatINR(r.amount)}<br /><span className="text-xs text-amber-700">−{formatINR(r.discountAmount)} disc.</span></span> : formatINR(r.amount)) },
             { key: 'pr', header: 'Method', render: (r) => (r.manualSubmittedAt && r.status !== 'paid' ? <span className="text-xs"><b className="text-sky-700">Manual</b><br /><span className="font-mono">{r.manualUtr}</span></span> : r.provider ?? '—') },
             { key: 's', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'c', header: 'Commission', render: (r) => <StatusBadge status={r.commissionStatus} /> },
@@ -73,6 +73,7 @@ export function AdminPayments() {
               ['User', p.user ? <Link className="text-brand-600" to={`/admin/users/${p.user.id}`}>{p.user.fullName} ({p.user.userCode})</Link> : '—'],
               ['Package', p.type === 'upgrade' ? `Upgrade ${p.fromPackage?.name} → ${p.package?.name}` : p.package?.name],
               ['Amount', formatINR(p.amount)], ['Commission base', formatINR(p.commissionBase)],
+              ...(Number(p.discountAmount ?? 0) > 0 ? ([['Price / discount', `${formatINR(p.listAmount)} − ${formatINR(p.discountAmount)} (discount code)`]] as [string, string][]) : []),
               ['Status', <StatusBadge status={p.status} />], ['Provider / ref', `${p.provider ?? '—'} · ${p.providerPaymentId ?? '—'}`],
               ['Paid at', formatDateTime(p.paidAt)], ['Notes', p.notes ?? '—'],
             ]} />
