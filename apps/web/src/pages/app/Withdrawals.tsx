@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Info } from 'lucide-react';
+import { CalendarClock, ImagePlus, Info } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { Alert, Button, Card, Field, Input, KV, Modal, PageHeader, Pagination, Select, StatusBadge, Table, Toggle } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { imageToDataUrl } from '../../lib/image';
 import { useDebounced, usePaged } from '../../lib/hooks';
 import { formatDateTime, formatINR, pct, scheduleText } from '../../lib/format';
 import type { PayoutDetails, Withdrawal } from '../../lib/types';
@@ -35,8 +36,14 @@ export function Breakdown({ gross, chargeBps, charge, net }: { gross: number | s
 }
 
 export default function Withdrawals() {
-  const { me } = useAuth();
+  const { me, refresh } = useAuth();
   const qc = useQueryClient();
+  const [qrErr, setQrErr] = useState('');
+  const uploadQr = useMutation({
+    mutationFn: async (file: File) => api.post('/me/payout-qr', { image: await imageToDataUrl(file, 1200, 0.9) }),
+    onSuccess: () => refresh(),
+    onError: (e: Error) => setQrErr(e.message),
+  });
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'upi' | 'bank'>('upi');
   const [details, setDetails] = useState<PayoutDetails>({});
@@ -103,6 +110,22 @@ export default function Withdrawals() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="UPI ID"><Input value={details.upiId ?? ''} onChange={set('upiId')} placeholder="name@bank" required /></Field>
                   <Field label="Account holder name"><Input value={details.accountName ?? ''} onChange={set('accountName')} /></Field>
+                  <div className="sm:col-span-2">
+                    <p className="text-sm font-medium text-slate-700">UPI QR code <span className="font-normal text-slate-500">(optional)</span></p>
+                    <p className="mb-2 text-xs text-slate-500">Upload the QR from your UPI app (GPay / PhonePe / Paytm). Admin can scan it to pay you.</p>
+                    <div className="flex items-center gap-4">
+                      {me?.upiQrUrl
+                        ? <a href={me.upiQrUrl} target="_blank" rel="noreferrer"><img src={me.upiQrUrl} alt="Your UPI QR" className="h-24 w-24 rounded-lg border border-slate-200 object-contain" /></a>
+                        : <div className="flex h-24 w-24 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-400"><ImagePlus className="h-6 w-6" /></div>}
+                      <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        {uploadQr.isPending ? 'Uploading…' : me?.upiQrUrl ? 'Replace QR' : 'Upload QR'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploadQr.isPending}
+                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; setQrErr(''); if (f) uploadQr.mutate(f); }} />
+                      </label>
+                    </div>
+                    {uploadQr.isSuccess && <p className="mt-2 text-sm text-emerald-600">QR code saved. Admin will see it with your withdrawal.</p>}
+                    {qrErr && <div className="mt-2"><Alert>{qrErr}</Alert></div>}
+                  </div>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
