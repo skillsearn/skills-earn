@@ -24,7 +24,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, Suspense, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -224,7 +224,10 @@ function Shell({ nav, title, badge, tabs, footer }: { nav: NavItem[]; title: str
         <div className="flex items-center gap-2">{badge}</div>
       </header>
       <main className={cx('mx-auto max-w-7xl px-4 py-5 sm:py-6 lg:px-8', tabs && 'pb-24 lg:pb-6')}>
-        <Outlet />
+        {/* Keyed per page: the menu closes and the new page appears at once instead of waiting on the old screen. */}
+        <Suspense key={pathname} fallback={<Spinner />}>
+          <Outlet />
+        </Suspense>
         {footer}
       </main>
       {tabs && (
@@ -316,5 +319,7 @@ export function RequireAuth({ role }: { role?: 'admin' }) {
   if (!me) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   if (me.status === 'suspended') return <Navigate to="/suspended" replace />;
   if (role === 'admin' && me.role !== 'admin') return <Navigate to="/app" replace />;
+  // The admin has no member area: old links / notifications to /app/* go to the admin panel.
+  if (!role && me.role === 'admin') return <Navigate to="/admin" replace />;
   return <Outlet />;
 }

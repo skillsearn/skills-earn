@@ -44,7 +44,10 @@ export function Login() {
     try {
       const me = await login(identifier, password);
       const next = params.get('next');
-      navigate(next && next.startsWith('/') ? next : me.role === 'admin' ? '/admin' : '/app', { replace: true });
+      const home = me.role === 'admin' ? '/admin' : '/app';
+      // Never send the admin into the member area (or a member into the admin panel) from a stale ?next=.
+      const ok = next && next.startsWith('/') && !next.startsWith('//') && (me.role === 'admin' ? !next.startsWith('/app') : !next.startsWith('/admin'));
+      navigate(ok ? next : home, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {

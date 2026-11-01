@@ -1,4 +1,4 @@
-import { ComponentType, lazy, Suspense } from 'react';
+import { ComponentType, lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Spinner } from './components/ui';
 import { AdminLayout, AppLayout, PublicLayout, RequireAuth } from './components/layouts';
@@ -40,6 +40,15 @@ const AdminSettings = page(system, 'AdminSettings');
 const AdminUserDetail = page(users, 'AdminUserDetail');
 const AdminUsers = page(users, 'AdminUsers');
 
+/** Downloads every admin screen in the background once the panel opens, so menu clicks open instantly. */
+function AdminShell() {
+  useEffect(() => {
+    const t = setTimeout(() => { [catalog, dash, discounts, finance, system, users].forEach((load) => load().catch(() => {})); }, 300);
+    return () => clearTimeout(t);
+  }, []);
+  return <AdminLayout />;
+}
+
 export default function App() {
   return (
     <Suspense fallback={<Spinner />}>
@@ -73,7 +82,7 @@ export default function App() {
       </Route>
 
       <Route path="admin" element={<RequireAuth role="admin" />}>
-        <Route element={<AdminLayout />}>
+        <Route element={<AdminShell />}>
           <Route index element={<AdminDashboard />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="users" element={<AdminUsers />} />
