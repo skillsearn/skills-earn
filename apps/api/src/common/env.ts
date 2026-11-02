@@ -14,6 +14,10 @@ export interface Env {
   RAZORPAY_WEBHOOK_SECRET?: string;
   /** RazorpayX banking account number; withdrawal payouts are enabled only when set. */
   RAZORPAYX_ACCOUNT_NUMBER?: string;
+  /** Resend (resend.com) — transactional email (password reset OTP). */
+  RESEND_API_KEY?: string;
+  /** Sender on a Resend-verified domain, e.g. "SkillsEarn <no-reply@skillsearn.in>". */
+  EMAIL_FROM?: string;
 }
 
 /** Validates process env at boot; the app refuses to start on bad config. */

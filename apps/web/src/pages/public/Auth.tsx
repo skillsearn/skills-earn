@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Field, Input, PasswordInput, Spinner } from '../../components/ui';
 import { Logo } from '../../components/layouts';
 import { api } from '../../lib/api';
@@ -32,6 +32,7 @@ export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const resetDone = (useLocation().state as { resetDone?: boolean } | null)?.resetDone;
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -58,6 +59,7 @@ export function Login() {
   return (
     <AuthCard title="Welcome back" subtitle={<>New here? <Link className="font-medium text-brand-600" to="/register">Create an account</Link></>}>
       <form onSubmit={submit} className="space-y-4">
+        {resetDone && !error && <Alert tone="green">Password updated. Log in with your new password.</Alert>}
         {error && <Alert>{error}</Alert>}
         <Field label="User ID, email or mobile">
           <Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="SE100001 / you@email.com / 98765 43210" required autoComplete="username" />
@@ -174,34 +176,134 @@ export function Register() {
   );
 }
 
+function OtpBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const digits = Array.from({ length: 4 }, (_, i) => value[i] ?? '');
+  const set = (i: number, d: string) => {
+    const next = digits.slice();
+    next[i] = d;
+    onChange(next.join('').slice(0, 4));
+  };
+  return (
+    <div className="flex justify-center gap-3">
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          value={d}
+          inputMode="numeric"
+          autoComplete={i === 0 ? 'one-time-code' : 'off'}
+          maxLength={4}
+          aria-label={`Digit ${i + 1}`}
+          className="h-14 w-14 rounded-xl border border-slate-300 text-center text-2xl font-bold outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
+          onChange={(e) => {
+            const v = e.target.value.replace(/\D/g, '');
+            if (v.length > 1) {
+              // Pasted or autofilled the whole code.
+              onChange(v.slice(0, 4));
+              refs.current[Math.min(v.length, 4) - 1]?.focus();
+              return;
+            }
+            set(i, v);
+            if (v && i < 3) refs.current[i + 1]?.focus();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Backspace' && !d && i > 0) refs.current[i - 1]?.focus();
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function ForgotPassword() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<'request' | 'verify'>('request');
   const [identifier, setIdentifier] = useState('');
+  const [otp, setOtp] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  async function sendCode() {
+    setLoading(true);
+    setError('');
+    try {
+      const r = await api.post<{ message: string }>('/auth/forgot-password', { identifier });
+      setMsg(r.message);
+      setStep('verify');
+      setCooldown(60);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reset(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (otp.length !== 4) return setError('Enter the 4-digit code from your email');
+    if (password !== confirm) return setError('Passwords do not match');
+    setLoading(true);
+    try {
+      await api.post('/auth/reset-password', { identifier, otp, password });
+      navigate('/login', { replace: true, state: { resetDone: true } });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (step === 'request') {
+    return (
+      <AuthCard title="Reset your password" subtitle="We'll email a 4-digit code to your registered address.">
+        <form onSubmit={(e) => { e.preventDefault(); sendCode(); }} className="space-y-4">
+          {error && <Alert>{error}</Alert>}
+          <Field label="User ID, email or mobile"><Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} required /></Field>
+          <Button type="submit" loading={loading} className="w-full">Send code</Button>
+          <p className="text-center text-sm"><Link to="/login" className="text-brand-600">Back to login</Link></p>
+        </form>
+      </AuthCard>
+    );
+  }
+
   return (
-    <AuthCard title="Reset your password" subtitle="We'll email a reset link to your registered address.">
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setLoading(true);
-          setError('');
-          try {
-            const r = await api.post<{ message: string }>('/auth/forgot-password', { identifier });
-            setMsg(r.message);
-          } catch (err) {
-            setError((err as Error).message);
-          } finally {
-            setLoading(false);
-          }
-        }}
-        className="space-y-4"
-      >
-        {msg && <Alert tone="green">{msg}</Alert>}
+    <AuthCard title="Enter code & new password" subtitle={msg}>
+      <form onSubmit={reset} className="space-y-5">
         {error && <Alert>{error}</Alert>}
-        <Field label="User ID, email or mobile"><Input value={identifier} onChange={(e) => setIdentifier(e.target.value)} required /></Field>
-        <Button type="submit" loading={loading} className="w-full">Send reset link</Button>
-        <p className="text-center text-sm"><Link to="/login" className="text-brand-600">Back to login</Link></p>
+        <div>
+          <span className="mb-2 block text-sm font-medium text-slate-700">4-digit code</span>
+          <OtpBoxes value={otp} onChange={setOtp} />
+          <p className="mt-2 text-center text-xs text-slate-500">
+            Didn't get it?{' '}
+            {cooldown > 0 ? (
+              <span>Resend in {cooldown}s</span>
+            ) : (
+              <button type="button" className="font-medium text-brand-600" onClick={sendCode} disabled={loading}>Resend code</button>
+            )}
+          </p>
+        </div>
+        <Field label="New password" hint="At least 8 characters">
+          <PasswordInput minLength={8} maxLength={72} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
+        </Field>
+        <Field label="Confirm new password" error={confirm && confirm !== password ? 'Passwords do not match' : undefined}>
+          <PasswordInput minLength={8} maxLength={72} value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" />
+        </Field>
+        <Button type="submit" loading={loading} className="w-full">Reset password</Button>
+        <p className="text-center text-sm">
+          <button type="button" className="text-brand-600" onClick={() => { setStep('request'); setOtp(''); setError(''); }}>Use a different account</button>
+        </p>
       </form>
     </AuthCard>
   );

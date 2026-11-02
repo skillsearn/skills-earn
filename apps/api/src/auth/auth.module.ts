@@ -36,6 +36,14 @@ import { SupabaseService, toHttpError, unwrap } from '../common/supabase.service
 import { UploadsService } from '../common/uploads.service';
 import { normalizeMobile, toCamel } from '../common/util';
 import { Req } from '@nestjs/common';
+import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { EmailService } from '../common/email.service';
+
+const OTP_TTL_MS = 10 * 60_000;
+const OTP_RESEND_MS = 60_000;
+const OTP_MAX_TRIES = 5;
+type PwdOtp = { h: string; exp: number; sent: number; tries: number };
+const hashOtp = (userId: string, code: string) => createHash('sha256').update(`${userId}:${code}`).digest('hex');
 
 export class RegisterDto {
   @IsString() @MinLength(2) @MaxLength(80) fullName: string;
@@ -54,6 +62,12 @@ export class LoginDto {
 
 export class ForgotPasswordDto {
   @IsString() @MinLength(3) @MaxLength(120) identifier: string;
+}
+
+export class ResetPasswordDto {
+  @IsString() @MinLength(3) @MaxLength(120) identifier: string;
+  @IsString() @Matches(/^\d{4}$/, { message: 'Enter the 4-digit code' }) otp: string;
+  @IsString() @MinLength(8) @MaxLength(72) password: string;
 }
 
 export class ChangePasswordDto {
@@ -92,6 +106,7 @@ export class AuthService {
     private readonly cache: AuthCache,
     private readonly config: ConfigService<Env, true>,
     private readonly uploads: UploadsService,
+    private readonly email: EmailService,
   ) {}
 
   referralLink(code: string) {
@@ -196,14 +211,62 @@ export class AuthService {
 
   async forgotPassword(dto: ForgotPasswordDto) {
     const profile = await this.resolveEmail(dto.identifier);
+    if (!profile) this.logger.log('forgot-password: no account matches the identifier');
     if (profile) {
-      const { error } = await this.supabase.anon().auth.resetPasswordForEmail(profile.email, {
-        redirectTo: `${this.config.get('SITE_URL')}/reset-password`,
-      });
-      if (error) this.logger.warn(`reset email failed: ${error.message}`);
+      const { data, error: getErr } = await this.supabase.db.auth.admin.getUserById(profile.id);
+      if (getErr) this.logger.warn(`forgot-password: getUserById failed: ${getErr.message}`);
+      const prev = data.user?.app_metadata?.pwd_otp as PwdOtp | undefined;
+      // Cooldown so the endpoint can't be used to spam someone's inbox.
+      if (!prev || Date.now() - prev.sent >= OTP_RESEND_MS) {
+        const code = String(randomInt(0, 10_000)).padStart(4, '0');
+        const otp: PwdOtp = { h: hashOtp(profile.id, code), exp: Date.now() + OTP_TTL_MS, sent: Date.now(), tries: 0 };
+        const { error } = await this.supabase.db.auth.admin.updateUserById(profile.id, { app_metadata: { pwd_otp: otp } });
+        if (error) this.logger.warn(`store otp failed: ${error.message}`);
+        else {
+          const masked = profile.email.replace(/^(.).*(@.*)$/, '$1***$2');
+          const sent = await this.email.send(
+            profile.email,
+            `${code} is your SkillsEarn password reset code`,
+            `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#0f172a">
+              <h2 style="margin:0 0 12px">Reset your password</h2>
+              <p>Use this code to reset your SkillsEarn password:</p>
+              <p style="font-size:32px;font-weight:700;letter-spacing:10px;margin:20px 0;color:#b8860b">${code}</p>
+              <p style="color:#64748b;font-size:14px">The code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>
+            </div>`,
+            `Your SkillsEarn password reset code is ${code}. It expires in 10 minutes.`,
+          );
+          this.logger.log(`forgot-password: OTP email to ${masked} ${sent ? 'accepted by Resend' : 'FAILED'}`);
+        }
+      } else {
+        this.logger.log('forgot-password: skipped, code was sent less than 60s ago');
+      }
     }
     // Same response either way so accounts can't be enumerated.
-    return { ok: true, message: 'If the account exists, a reset link has been sent to the registered email.' };
+    return { ok: true, message: 'If the account exists, a 4-digit code has been sent to the registered email.' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto, ip: string | null) {
+    const invalid = new BadRequestException({ code: 'INVALID_OTP', message: 'Invalid or expired code' });
+    const profile = await this.resolveEmail(dto.identifier);
+    if (!profile) throw invalid;
+    const { data } = await this.supabase.db.auth.admin.getUserById(profile.id);
+    const otp = data.user?.app_metadata?.pwd_otp as PwdOtp | undefined;
+    if (!otp || Date.now() > otp.exp || otp.tries >= OTP_MAX_TRIES) throw invalid;
+
+    const given = Buffer.from(hashOtp(profile.id, dto.otp));
+    if (!timingSafeEqual(given, Buffer.from(otp.h))) {
+      await this.supabase.db.auth.admin.updateUserById(profile.id, { app_metadata: { pwd_otp: { ...otp, tries: otp.tries + 1 } } });
+      throw invalid;
+    }
+
+    const { error } = await this.supabase.db.auth.admin.updateUserById(profile.id, {
+      password: dto.password,
+      app_metadata: { pwd_otp: null },
+    });
+    if (error) throw toHttpError(error);
+    this.cache.invalidateUser(profile.id);
+    await this.audit.log({ actorId: profile.id, action: 'security.password_reset', entity: 'profile', entityId: profile.id, ip });
+    return { ok: true, message: 'Password updated. You can now log in.' };
   }
 
   async me(userId: string) {
@@ -290,6 +353,14 @@ export class AuthController {
     return this.auth.forgotPassword(dto);
   }
 
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('auth/reset-password')
+  reset(@Body() dto: ResetPasswordDto, @ClientIp() ip: string | null) {
+    return this.auth.resetPassword(dto, ip);
+  }
+
   @AllowSuspended()
   @Get('auth/me')
   me(@CurrentUser() user: AuthUser) {
@@ -323,5 +394,5 @@ export class AuthController {
   }
 }
 
-@Module({ providers: [AuthService], controllers: [AuthController], exports: [AuthService] })
+@Module({ providers: [AuthService, EmailService], controllers: [AuthController], exports: [AuthService] })
 export class AuthModule {}
